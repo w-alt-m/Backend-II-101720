@@ -94,10 +94,12 @@ npm start
 | GET    | `/api/health`   | Estado del servidor   | No   |
 
 ### Sessions
-| Método | Ruta                   | Descripción             | Auth |
-|--------|------------------------|-------------------------|------|
-| POST   | `/api/sessions/register` | Registro de usuario   | No   |
-| POST   | `/api/sessions/login`    | Inicio de sesión      | No   |
+| Método | Ruta                       | Descripción                  | Auth |
+|--------|----------------------------|------------------------------|------|
+| POST   | `/api/sessions/register`   | Registro de usuario          | No   |
+| POST   | `/api/sessions/login`      | Inicio de sesión (setea cookie) | No   |
+| GET    | `/api/sessions/current`    | Obtener usuario autenticado  | Sí (cookie) |
+| POST   | `/api/sessions/logout`     | Cerrar sesión (elimina cookie) | No   |
 
 ### Events
 | Método | Ruta                      | Descripción                  | Auth   |
@@ -191,8 +193,6 @@ Registra un nuevo usuario en la plataforma.
 
 #### Cómo probar
 
-**cURL:**
-
 ```bash
 curl -X POST http://localhost:8080/api/sessions/register \
   -H "Content-Type: application/json" \
@@ -204,19 +204,126 @@ curl -X POST http://localhost:8080/api/sessions/register \
   }'
 ```
 
-**Postman / Thunder Client:**
+---
 
-1. Método: `POST`
-2. URL: `http://localhost:8080/api/sessions/register`
-3. Headers: `Content-Type: application/json`
-4. Body (raw JSON):
+### POST `/api/sessions/login`
+
+Autentica un usuario y setea un JWT en la cookie `currentUser`.
+
+#### Body (JSON)
+
 ```json
 {
-  "first_name": "Juan",
-  "last_name": "Pérez",
   "email": "juan@example.com",
   "password": "miPassword123"
 }
 ```
-5. Enviar y verificar respuesta con status `201`.
 
+#### Respuestas
+
+**200 OK** — Login exitoso (la cookie `currentUser` se setea automáticamente):
+
+```json
+{
+  "status": "success",
+  "message": "Login correcto"
+}
+```
+
+**400 Bad Request** — Campos faltantes:
+
+```json
+{
+  "status": "error",
+  "message": "email y password son obligatorios"
+}
+```
+
+**401 Unauthorized** — Credenciales inválidas:
+
+```json
+{
+  "status": "error",
+  "message": "Credenciales inválidas"
+}
+```
+
+#### Cómo probar
+
+```bash
+# cURL (guarda la cookie en un archivo para usarla en los siguientes requests)
+curl -X POST http://localhost:8080/api/sessions/login \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{
+    "email": "juan@example.com",
+    "password": "miPassword123"
+  }'
+```
+
+**Postman / Thunder Client:**
+
+1. Método: `POST`
+2. URL: `http://localhost:8080/api/sessions/login`
+3. Body (raw JSON): `{ "email": "juan@example.com", "password": "miPassword123" }`
+4. La cookie `currentUser` se guarda automáticamente para los siguientes requests.
+
+---
+
+### GET `/api/sessions/current`
+
+Devuelve los datos del usuario autenticado. Requiere la cookie `currentUser` con un JWT válido.
+
+#### Respuestas
+
+**200 OK** — Usuario autenticado:
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "id": "665f1a2b3c4d5e6f7a8b9c0d",
+    "email": "juan@example.com",
+    "role": "user"
+  }
+}
+```
+
+**401 Unauthorized** — Sin cookie o token inválido/expirado:
+
+```json
+{
+  "status": "error",
+  "message": "No autenticado"
+}
+```
+
+#### Cómo probar
+
+```bash
+# cURL (usa la cookie guardada en el login)
+curl http://localhost:8080/api/sessions/current -b cookies.txt
+```
+
+---
+
+### POST `/api/sessions/logout`
+
+Elimina la cookie `currentUser` y cierra la sesión.
+
+#### Respuestas
+
+**200 OK** — Sesión cerrada:
+
+```json
+{
+  "status": "success",
+  "message": "Sesión cerrada"
+}
+```
+
+#### Cómo probar
+
+```bash
+curl -X POST http://localhost:8080/api/sessions/logout -b cookies.txt -c cookies.txt
+```

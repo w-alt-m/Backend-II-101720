@@ -1,4 +1,5 @@
 import { AuthService } from "../services/auth.service.js";
+import { generateToken } from "../utils/jwt.js";
 
 const authService = new AuthService();
 
@@ -32,14 +33,40 @@ export const login = async (req, res, next) => {
       });
     }
 
-    const result = await authService.login(email, password);
+    const { user, token } = await authService.login(email, password);
 
-    res.json({
+    res.cookie("currentUser", token, {
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 3600000,
+      secure: process.env.NODE_ENV === "production"
+    });
+
+    res.status(200).json({
       status: "success",
-      message: "Login exitoso",
-      ...result
+      message: "Login correcto"
     });
   } catch (error) {
     next(error);
   }
+};
+
+export const current = async (req, res) => {
+  res.status(200).json({
+    status: "success",
+    payload: {
+      id: req.user.id,
+      email: req.user.email,
+      role: req.user.role
+    }
+  });
+};
+
+export const logout = async (req, res) => {
+  res.clearCookie("currentUser");
+
+  res.status(200).json({
+    status: "success",
+    message: "Sesión cerrada"
+  });
 };
