@@ -8,18 +8,30 @@ export class AuthService {
   }
 
   async register(data) {
+    const first_name = data.first_name?.trim();
+    const last_name = data.last_name?.trim();
     const email = data.email?.trim().toLowerCase();
+    const password = data.password;
 
-    if (!data.first_name || !data.last_name || !email || !data.password) {
+    if (!first_name || !last_name || !email || !password) {
       throw Object.assign(
-        new Error("first_name, last_name, email y password son obligatorios"),
+        new Error("Faltan campos obligatorios"),
         { status: 400 }
       );
     }
 
-    if (data.password.length < 8) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
       throw Object.assign(
-        new Error("La contraseña debe tener al menos 8 caracteres"),
+        new Error("El formato del email no es válido"),
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 6) {
+      throw Object.assign(
+        new Error("La contraseña debe tener al menos 6 caracteres"),
         { status: 400 }
       );
     }
@@ -33,14 +45,14 @@ export class AuthService {
       );
     }
 
-    const password = await hashPassword(data.password);
+    const hashedPassword = await hashPassword(password);
 
     return this.userRepository.create({
-      first_name: data.first_name,
-      last_name: data.last_name,
+      first_name,
+      last_name,
       email,
-      password,
-      role: data.role || "user"
+      password: hashedPassword,
+      role: "user"
     });
   }
 

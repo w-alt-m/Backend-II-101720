@@ -8,8 +8,7 @@ export const register = async (req, res, next) => {
 
     res.status(201).json({
       status: "success",
-      message: "Usuario registrado",
-      data: {
+      payload: {
         id: user._id,
         first_name: user.first_name,
         last_name: user.last_name,

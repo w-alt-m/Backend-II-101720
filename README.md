@@ -107,3 +107,116 @@ npm start
 | POST   | `/api/events`             | Crear evento                 | Sí (organizer/admin) |
 | PUT    | `/api/events/:id`         | Actualizar evento            | Sí (organizer/admin) |
 | PATCH  | `/api/events/:id/status`  | Cambiar estado del evento    | Sí (organizer/admin) |
+
+---
+
+## Detalle de Endpoints
+
+### POST `/api/sessions/register`
+
+Registra un nuevo usuario en la plataforma.
+
+#### Body (JSON)
+
+```json
+{
+  "first_name": "Juan",
+  "last_name": "Pérez",
+  "email": "juan@example.com",
+  "password": "miPassword123"
+}
+```
+
+| Campo        | Tipo   | Obligatorio | Restricciones                       |
+|--------------|--------|-------------|-------------------------------------|
+| `first_name` | String | Sí          | —                                   |
+| `last_name`  | String | Sí          | —                                   |
+| `email`      | String | Sí          | Formato de email válido, único      |
+| `password`   | String | Sí          | Mínimo 6 caracteres                 |
+
+> **Nota:** El campo `role` no se acepta desde el body. Todos los usuarios se crean con role `"user"`.
+
+#### Respuestas
+
+**201 Created** — Registro exitoso:
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "id": "665f1a2b3c4d5e6f7a8b9c0d",
+    "first_name": "Juan",
+    "last_name": "Pérez",
+    "email": "juan@example.com",
+    "role": "user"
+  }
+}
+```
+
+**400 Bad Request** — Campos faltantes:
+
+```json
+{
+  "status": "error",
+  "message": "Faltan campos obligatorios"
+}
+```
+
+**400 Bad Request** — Email con formato inválido:
+
+```json
+{
+  "status": "error",
+  "message": "El formato del email no es válido"
+}
+```
+
+**400 Bad Request** — Contraseña demasiado corta:
+
+```json
+{
+  "status": "error",
+  "message": "La contraseña debe tener al menos 6 caracteres"
+}
+```
+
+**409 Conflict** — Email duplicado:
+
+```json
+{
+  "status": "error",
+  "message": "El email ya está registrado"
+}
+```
+
+#### Cómo probar
+
+**cURL:**
+
+```bash
+curl -X POST http://localhost:8080/api/sessions/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "Juan",
+    "last_name": "Pérez",
+    "email": "juan@example.com",
+    "password": "miPassword123"
+  }'
+```
+
+**Postman / Thunder Client:**
+
+1. Método: `POST`
+2. URL: `http://localhost:8080/api/sessions/register`
+3. Headers: `Content-Type: application/json`
+4. Body (raw JSON):
+```json
+{
+  "first_name": "Juan",
+  "last_name": "Pérez",
+  "email": "juan@example.com",
+  "password": "miPassword123"
+}
+```
+5. Enviar y verificar respuesta con status `201`.
+
