@@ -66,18 +66,9 @@ export const updateEvent = async (req, res, next) => {
 
 export const changeEventStatus = async (req, res, next) => {
   try {
-    const { status } = req.body;
-
-    if (!status) {
-      return res.status(400).json({
-        status: "error",
-        message: "El campo status es obligatorio"
-      });
-    }
-
     const event = await eventService.changeStatus(
       req.params.id,
-      status,
+      req.body.status,
       req.user
     );
 

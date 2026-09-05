@@ -84,6 +84,77 @@ El sistema distingue claramente entre **autenticación** y **autorización**:
 }
 ```
 
+## Entidad Events — Modelo y Lógica de Negocio
+
+### Modelo Event
+
+| Campo        | Tipo       | Requerido | Restricciones                                      |
+|--------------|------------|:---------:|-----------------------------------------------------|
+| `title`      | String     | Sí        | —                                                   |
+| `description`| String     | Sí        | —                                                   |
+| `category`   | String     | Sí        | —                                                   |
+| `date`       | Date       | Sí        | Debe ser una fecha futura                           |
+| `location`   | String     | Sí        | —                                                   |
+| `capacity`   | Number     | Sí        | Mínimo 1 (`"La capacidad debe ser mayor a 0"`)     |
+| `price`      | Number     | Sí        | Mínimo 0 (`"El precio no puede ser negativo"`)     |
+| `status`     | String     | No        | `draft` (default), `published`, `cancelled`, `finished` |
+| `organizer`  | ObjectId   | Sí        | Referencia a `User` (NO embebido)                   |
+
+### Reglas de Negocio
+
+1. **Fechas pasadas:** No se puede crear ni actualizar un evento con una fecha anterior o igual a la actual.
+2. **Borrado lógico:** La cancelación de un evento cambia su `status` a `"cancelled"`. **Nunca** se elimina físicamente de la base de datos.
+3. **Eventos cancelados:** Un evento con status `"cancelled"` no puede ser modificado ni cambiar de estado.
+4. **Transiciones de estado prohibidas:**
+   - No se puede publicar (`published`) un evento que ya esté en `finished` o `cancelled`.
+   - No se puede cambiar al mismo status que ya tiene.
+5. **Asignación de organizador:** El campo `organizer` se asigna exclusivamente desde `req.user.id` (usuario autenticado). Cualquier valor de `organizer` enviado en el body es ignorado.
+6. **Propiedad del recurso:**
+   - Un `organizer` solo puede modificar/cancelar eventos donde figure como creador.
+   - Un `admin` puede modificar/cancelar cualquier evento.
+
+### Filtros disponibles para `GET /api/events`
+
+| Query Param  | Tipo   | Descripción                                     | Ejemplo                          |
+|--------------|--------|-------------------------------------------------|----------------------------------|
+| `status`     | String | Filtra por estado del evento                    | `?status=published`              |
+| `category`   | String | Búsqueda parcial por categoría (case insensitive)| `?category=música`              |
+| `location`   | String | Búsqueda parcial por ubicación (case insensitive)| `?location=buenos`              |
+| `dateFrom`   | String | Fecha mínima del rango (ISO 8601)               | `?dateFrom=2026-01-01`           |
+| `dateTo`     | String | Fecha máxima del rango (ISO 8601)               | `?dateTo=2026-12-31`             |
+| `page`       | Number | Número de página (default: 1)                   | `?page=2`                        |
+| `limit`      | Number | Resultados por página (default: 10, máx: 100)   | `?limit=20`                      |
+| `sort`       | String | Campo de ordenamiento (prefijo `-` para DESC)   | `?sort=-date`                    |
+
+**Campos de ordenamiento permitidos:** `date`, `price`, `title`, `category`, `location`.
+
+### Formato de respuesta paginada
+
+```json
+{
+  "status": "success",
+  "payload": [],
+  "page": 1,
+  "limit": 10,
+  "total": 50,
+  "totalPages": 5
+}
+```
+
+### Arquitectura por capas
+
+Toda la lógica de negocio de eventos reside en `src/services/event.service.js`. Los controladores solo extraen datos de `req` y envían respuestas HTTP. Las consultas a MongoDB se realizan a través de Repository → DAO.
+
+```
+Router → Controller → Service → Repository → DAO → MongoDB
+  │          │            │           │          │
+  │          │            │           │          └─ Queries directas al modelo
+  │          │            │           └─ Abstracción sobre el DAO
+  │          │            └─ Validaciones de negocio y orquestación
+  │          └─ Extrae req (body, params, query, user) y envía res
+  └─ Middlewares (auth, authorize) y definición de endpoints
+```
+
 ## Instalación
 
 ```bash

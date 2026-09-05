@@ -237,6 +237,10 @@ export class EventService {
   }
 
   async changeStatus(id, status, user) {
+    if (!status) {
+      throw businessError("El campo status es obligatorio");
+    }
+
     const event = await this.getEventById(id);
 
     if (event.status === "cancelled") {

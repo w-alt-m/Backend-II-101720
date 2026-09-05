@@ -29,12 +29,12 @@ const eventSchema = new mongoose.Schema(
     capacity: {
       type: Number,
       required: true,
-      min: 1
+      min: [1, "La capacidad debe ser mayor a 0"]
     },
     price: {
       type: Number,
       required: true,
-      min: 0
+      min: [0, "El precio no puede ser negativo"]
     },
     status: {
       type: String,
