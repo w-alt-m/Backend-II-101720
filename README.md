@@ -30,6 +30,60 @@ Toda la autenticación está centralizada en `src/config/passport.config.js`. Se
 
 La arquitectura está preparada para añadir proveedores OAuth (Google, GitHub, etc.) directamente en `passport.config.js` sin necesidad de modificar `app.js` ni las rutas existentes.
 
+## Sistema de Roles y Autorización
+
+### Roles disponibles
+
+| Rol          | Descripción                                      |
+|--------------|--------------------------------------------------|
+| `user`       | Usuario estándar. Puede consultar eventos.       |
+| `organizer`  | Puede crear y gestionar sus propios eventos.     |
+| `admin`      | Acceso total. Puede gestionar cualquier evento y ver todos los usuarios. |
+
+> **Nota:** El registro público siempre asigna `role: "user"`. El campo `role` enviado en el body es ignorado.
+
+### Matriz de Permisos
+
+| Acción                            | `user` | `organizer` | `admin` |
+|-----------------------------------|:------:|:-----------:|:-------:|
+| Consultar eventos                 |   ✅   |     ✅      |   ✅    |
+| Crear eventos                     |   ❌   |     ✅      |   ✅    |
+| Modificar/cancelar eventos propios|   ❌   |     ✅      |   ✅    |
+| Modificar cualquier evento        |   ❌   |     ❌      |   ✅    |
+| Ver todos los usuarios            |   ❌   |     ❌      |   ✅    |
+
+### Validación de propiedad
+
+- Un `organizer` solo puede modificar o cancelar eventos donde figure como creador (`organizer` del evento).
+- Un `admin` puede modificar o cancelar **cualquier** evento, sin importar quién lo creó.
+
+### Códigos de error de acceso: 401 vs 403
+
+El sistema distingue claramente entre **autenticación** y **autorización**:
+
+| Código | Significado           | Cuándo ocurre                                                    |
+|--------|-----------------------|------------------------------------------------------------------|
+| **401**| No autenticado        | No se envió la cookie `currentUser`, o el token JWT es inválido o expiró. |
+| **403**| Sin permisos          | El usuario está autenticado pero su rol no tiene permisos para la acción solicitada. |
+
+**Ejemplo de respuesta 401 (No autenticado):**
+
+```json
+{
+  "status": "error",
+  "message": "No autenticado"
+}
+```
+
+**Ejemplo de respuesta 403 (Sin permisos):**
+
+```json
+{
+  "status": "error",
+  "message": "No tenés permisos para realizar esta acción"
+}
+```
+
 ## Instalación
 
 ```bash
@@ -79,13 +133,14 @@ npm start
     │   └── passport.config.js  # Estrategias centralizadas: register, login, current
     ├── controllers/
     │   ├── event.controller.js # Controlador de eventos
-    │   └── sessions.controller.js # Controlador de sesiones
+    │   ├── sessions.controller.js # Controlador de sesiones
+    │   └── users.controller.js # Controlador de usuarios (admin)
     ├── dao/
     │   ├── event.dao.js        # Data Access Object de eventos
     │   └── user.dao.js         # Data Access Object de usuarios
     ├── middlewares/
     │   ├── auth.middleware.js   # Wrapper de Passport (estrategia "current")
-    │   └── authorization.middleware.js # Autorización por roles
+    │   └── authorization.middleware.js # Autorización por roles — authorize([...])
     ├── models/
     │   ├── event.model.js      # Modelo Mongoose de Event
     │   └── user.model.js       # Modelo Mongoose de User
@@ -95,9 +150,10 @@ npm start
     ├── routes/
     │   ├── events.router.js    # Rutas de eventos
     │   ├── health.router.js    # Ruta de health check
-    │   └── sessions.router.js  # Rutas de sesiones (delega en passport.authenticate)
+    │   ├── sessions.router.js  # Rutas de sesiones (delega en passport.authenticate)
+    │   └── users.router.js     # Rutas de usuarios (admin)
     ├── services/
-    │   ├── auth.service.js     # Lógica de negocio de autenticación (legacy, no usada por sessions)
+    │   ├── auth.service.js     # Lógica de negocio de autenticación (legacy)
     │   └── event.service.js    # Lógica de negocio de eventos
     └── utils/
         ├── jwt.js              # Generación y verificación de tokens JWT
@@ -125,8 +181,13 @@ npm start
 | GET    | `/api/events`             | Listar eventos (paginado)    | No     |
 | GET    | `/api/events/:id`         | Obtener evento por ID        | No     |
 | POST   | `/api/events`             | Crear evento                 | Sí (organizer/admin) |
-| PUT    | `/api/events/:id`         | Actualizar evento            | Sí (organizer/admin) |
-| PATCH  | `/api/events/:id/status`  | Cambiar estado del evento    | Sí (organizer/admin) |
+| PUT    | `/api/events/:id`         | Actualizar evento            | Sí (organizer/admin — propiedad) |
+| PATCH  | `/api/events/:id/status`  | Cambiar estado del evento    | Sí (organizer/admin — propiedad) |
+
+### Users (Admin)
+| Método | Ruta            | Descripción                  | Auth         |
+|--------|-----------------|------------------------------|--------------|
+| GET    | `/api/users`    | Listar todos los usuarios    | Sí (admin)   |
 
 ---
 
@@ -317,4 +378,56 @@ Elimina la cookie `currentUser` y cierra la sesión.
 
 ```bash
 curl -X POST http://localhost:8080/api/sessions/logout -b cookies.txt -c cookies.txt
+```
+
+---
+
+### GET `/api/users` (Solo admin)
+
+Devuelve la lista de todos los usuarios registrados. Requiere autenticación y rol `admin`.
+
+#### Respuestas
+
+**200 OK** — Lista de usuarios (sin contraseñas):
+
+```json
+{
+  "status": "success",
+  "payload": [
+    {
+      "_id": "665f1a2b3c4d5e6f7a8b9c0d",
+      "first_name": "Juan",
+      "last_name": "Pérez",
+      "email": "juan@example.com",
+      "role": "user",
+      "createdAt": "2026-09-05T10:00:00.000Z",
+      "updatedAt": "2026-09-05T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+**401 Unauthorized** — Sin cookie o token inválido:
+
+```json
+{
+  "status": "error",
+  "message": "No autenticado"
+}
+```
+
+**403 Forbidden** — Rol sin permisos (user u organizer):
+
+```json
+{
+  "status": "error",
+  "message": "No tenés permisos para realizar esta acción"
+}
+```
+
+#### Cómo probar
+
+```bash
+# Requiere estar logueado como admin
+curl http://localhost:8080/api/users -b cookies.txt
 ```

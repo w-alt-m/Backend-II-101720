@@ -8,4 +8,8 @@ export class UserDAO {
   async create(data) {
     return User.create(data);
   }
+
+  async findAll() {
+    return User.find().select("-password");
+  }
 }

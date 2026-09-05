@@ -8,6 +8,7 @@ import "./config/passport.config.js";
 import healthRouter from "./routes/health.router.js";
 import sessionsRouter from "./routes/sessions.router.js";
 import eventsRouter from "./routes/events.router.js";
+import usersRouter from "./routes/users.router.js";
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use(passport.initialize());
 app.use("/api/health", healthRouter);
 app.use("/api/sessions", sessionsRouter);
 app.use("/api/events", eventsRouter);
+app.use("/api/users", usersRouter);
 
 app.use((req, res) => {
   res.status(404).json({

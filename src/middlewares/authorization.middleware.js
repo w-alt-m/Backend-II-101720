@@ -1,9 +1,9 @@
-export const authorizeRoles = (...allowedRoles) => {
+export const authorize = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         status: "error",
-        message: "Usuario no autenticado"
+        message: "No autenticado"
       });
     }
 

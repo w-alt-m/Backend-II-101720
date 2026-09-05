@@ -75,7 +75,7 @@ export class EventService {
       capacity,
       price,
       status,
-      organizer: user._id
+      organizer: user.id
     });
   }
 
@@ -172,9 +172,11 @@ export class EventService {
 
     if (isAdmin) return;
 
-    const isOwner = event.organizer?._id
-      ? event.organizer._id.toString() === user._id.toString()
-      : event.organizer.toString() === user._id.toString();
+    const organizerId = event.organizer?._id
+      ? event.organizer._id.toString()
+      : event.organizer.toString();
+
+    const isOwner = organizerId === user.id;
 
     if (!isOwner) {
       throw businessError(

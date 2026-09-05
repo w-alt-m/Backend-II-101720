@@ -9,7 +9,7 @@ import {
 } from "../controllers/event.controller.js";
 
 import { authenticateJWT } from "../middlewares/auth.middleware.js";
-import { authorizeRoles } from "../middlewares/authorization.middleware.js";
+import { authorize } from "../middlewares/authorization.middleware.js";
 
 const router = Router();
 
@@ -21,22 +21,22 @@ router.get("/:id", getEventById);
 router.post(
   "/",
   authenticateJWT,
-  authorizeRoles("organizer", "admin"),
+  authorize(["organizer", "admin"]),
   createEvent
 );
 
-// Dueño o admin
+// Dueño o admin (propiedad validada en el service)
 router.put(
   "/:id",
   authenticateJWT,
-  authorizeRoles("organizer", "admin"),
+  authorize(["organizer", "admin"]),
   updateEvent
 );
 
 router.patch(
   "/:id/status",
   authenticateJWT,
-  authorizeRoles("organizer", "admin"),
+  authorize(["organizer", "admin"]),
   changeEventStatus
 );
 

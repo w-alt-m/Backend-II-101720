@@ -12,4 +12,8 @@ export class UserRepository {
   create(data) {
     return this.dao.create(data);
   }
+
+  findAll() {
+    return this.dao.findAll();
+  }
 }
