@@ -1,23 +1,22 @@
-import { verifyToken } from "../utils/jwt.js";
+import passport from "passport";
 
 export const authenticateJWT = (req, res, next) => {
-  const token = req.cookies.currentUser;
+  passport.authenticate("current", { session: false }, (err, user) => {
+    if (err) {
+      return res.status(401).json({
+        status: "error",
+        message: "No autenticado"
+      });
+    }
 
-  if (!token) {
-    return res.status(401).json({
-      status: "error",
-      message: "No autenticado"
-    });
-  }
+    if (!user) {
+      return res.status(401).json({
+        status: "error",
+        message: "No autenticado"
+      });
+    }
 
-  try {
-    const decoded = verifyToken(token);
-    req.user = decoded;
+    req.user = user;
     next();
-  } catch {
-    return res.status(401).json({
-      status: "error",
-      message: "No autenticado"
-    });
-  }
+  })(req, res, next);
 };

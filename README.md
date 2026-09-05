@@ -8,9 +8,27 @@ Plataforma backend para la gestión integral de eventos. Permite a organizadores
 - **Express 5** — Framework HTTP
 - **MongoDB + Mongoose** — Base de datos y ODM
 - **JWT (jsonwebtoken)** — Autenticación basada en tokens
-- **Passport.js** — Estrategia JWT
+- **Passport.js** — Autenticación centralizada (estrategias `register`, `login`, `current`)
+- **passport-local** — Estrategias de registro e inicio de sesión
+- **passport-jwt** — Estrategia de verificación de token JWT desde cookie
 - **bcryptjs** — Hashing de contraseñas
 - **dotenv** — Variables de entorno
+
+## Arquitectura de Autenticación — Passport.js
+
+Toda la autenticación está centralizada en `src/config/passport.config.js`. Se definen **tres estrategias** y `app.js` únicamente inicializa Passport con `passport.initialize()`.
+
+### Estrategias implementadas
+
+| Estrategia   | Tipo             | Descripción                                                                 |
+|--------------|------------------|-----------------------------------------------------------------------------|
+| `register`   | `passport-local` | Valida campos obligatorios, normaliza email, verifica duplicados, hashea password y crea el usuario con `role: "user"` forzado. |
+| `login`      | `passport-local` | Busca usuario por email y verifica contraseña. Error genérico sin revelar si falló email o password. |
+| `current`    | `passport-jwt`   | Extrae JWT de la cookie `currentUser`, decodifica el payload y asigna `{ id, email, role }` a `req.user`. |
+
+### Extensibilidad
+
+La arquitectura está preparada para añadir proveedores OAuth (Google, GitHub, etc.) directamente en `passport.config.js` sin necesidad de modificar `app.js` ni las rutas existentes.
 
 ## Instalación
 
@@ -54,11 +72,11 @@ npm start
 ├── package.json
 ├── README.md
 └── src/
-    ├── app.js                  # Configuración de Express (middlewares, rutas)
+    ├── app.js                  # Configuración de Express (middlewares, rutas, passport.initialize)
     ├── server.js               # Punto de entrada — levanta el servidor
     ├── config/
     │   ├── database.js         # Conexión a MongoDB
-    │   └── passport.config.js  # Estrategia JWT de Passport
+    │   └── passport.config.js  # Estrategias centralizadas: register, login, current
     ├── controllers/
     │   ├── event.controller.js # Controlador de eventos
     │   └── sessions.controller.js # Controlador de sesiones
@@ -66,7 +84,7 @@ npm start
     │   ├── event.dao.js        # Data Access Object de eventos
     │   └── user.dao.js         # Data Access Object de usuarios
     ├── middlewares/
-    │   ├── auth.middleware.js   # Autenticación JWT
+    │   ├── auth.middleware.js   # Wrapper de Passport (estrategia "current")
     │   └── authorization.middleware.js # Autorización por roles
     ├── models/
     │   ├── event.model.js      # Modelo Mongoose de Event
@@ -77,13 +95,13 @@ npm start
     ├── routes/
     │   ├── events.router.js    # Rutas de eventos
     │   ├── health.router.js    # Ruta de health check
-    │   └── sessions.router.js  # Rutas de sesiones
+    │   └── sessions.router.js  # Rutas de sesiones (delega en passport.authenticate)
     ├── services/
-    │   ├── auth.service.js     # Lógica de negocio de autenticación
+    │   ├── auth.service.js     # Lógica de negocio de autenticación (legacy, no usada por sessions)
     │   └── event.service.js    # Lógica de negocio de eventos
     └── utils/
-        ├── jwt.js              # Generación de tokens JWT
-        └── password.js         # Hashing y comparación de contraseñas
+        ├── jwt.js              # Generación y verificación de tokens JWT
+        └── password.js         # Hashing y comparación de contraseñas (usado por estrategias)
 ```
 
 ## Endpoints Disponibles
@@ -116,7 +134,7 @@ npm start
 
 ### POST `/api/sessions/register`
 
-Registra un nuevo usuario en la plataforma.
+Registra un nuevo usuario en la plataforma. La autenticación se delega a la estrategia `register` de Passport.
 
 #### Body (JSON)
 
@@ -134,7 +152,7 @@ Registra un nuevo usuario en la plataforma.
 | `first_name` | String | Sí          | —                                   |
 | `last_name`  | String | Sí          | —                                   |
 | `email`      | String | Sí          | Formato de email válido, único      |
-| `password`   | String | Sí          | Mínimo 6 caracteres                 |
+| `password`   | String | Sí          | —                                   |
 
 > **Nota:** El campo `role` no se acepta desde el body. Todos los usuarios se crean con role `"user"`.
 
@@ -164,24 +182,6 @@ Registra un nuevo usuario en la plataforma.
 }
 ```
 
-**400 Bad Request** — Email con formato inválido:
-
-```json
-{
-  "status": "error",
-  "message": "El formato del email no es válido"
-}
-```
-
-**400 Bad Request** — Contraseña demasiado corta:
-
-```json
-{
-  "status": "error",
-  "message": "La contraseña debe tener al menos 6 caracteres"
-}
-```
-
 **409 Conflict** — Email duplicado:
 
 ```json
@@ -208,7 +208,7 @@ curl -X POST http://localhost:8080/api/sessions/register \
 
 ### POST `/api/sessions/login`
 
-Autentica un usuario y setea un JWT en la cookie `currentUser`.
+Autentica un usuario mediante la estrategia `login` de Passport y setea un JWT en la cookie `currentUser`.
 
 #### Body (JSON)
 
@@ -227,15 +227,6 @@ Autentica un usuario y setea un JWT en la cookie `currentUser`.
 {
   "status": "success",
   "message": "Login correcto"
-}
-```
-
-**400 Bad Request** — Campos faltantes:
-
-```json
-{
-  "status": "error",
-  "message": "email y password son obligatorios"
 }
 ```
 
@@ -272,7 +263,7 @@ curl -X POST http://localhost:8080/api/sessions/login \
 
 ### GET `/api/sessions/current`
 
-Devuelve los datos del usuario autenticado. Requiere la cookie `currentUser` con un JWT válido.
+Devuelve los datos del usuario autenticado. Protegido por la estrategia `current` de Passport, que verifica el JWT desde la cookie `currentUser`.
 
 #### Respuestas
 
