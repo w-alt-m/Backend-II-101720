@@ -47,13 +47,18 @@ export class AuthService {
 
     const hashedPassword = await hashPassword(password);
 
-    return this.userRepository.create({
+    const newUser = await this.userRepository.create({
       first_name,
       last_name,
       email,
       password: hashedPassword,
       role: "user"
     });
+
+    // Devolver usuario sin password
+    const userObj = newUser.toObject();
+    delete userObj.password;
+    return userObj;
   }
 
   async login(email, password) {

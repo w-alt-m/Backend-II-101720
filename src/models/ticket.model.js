@@ -39,6 +39,5 @@ const ticketSchema = new mongoose.Schema(
 
 ticketSchema.index({ user: 1, event: 1 });
 ticketSchema.index({ event: 1, status: 1 });
-ticketSchema.index({ reservationCode: 1 });
 
 export default mongoose.model("Ticket", ticketSchema);

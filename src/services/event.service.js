@@ -47,9 +47,9 @@ export class EventService {
       status = "draft"
     } = data;
 
-    if (!title || !description || !category || !date || !location) {
+    if (!title || !description || !category || !date || !location || capacity === undefined || price === undefined) {
       throw businessError(
-        "title, description, category, date y location son obligatorios"
+        "title, description, category, date, location, capacity y price son obligatorios"
       );
     }
 
@@ -253,10 +253,6 @@ export class EventService {
 
     if (status === "published" && event.status === "finished") {
       throw businessError("No se puede publicar un evento finalizado");
-    }
-
-    if (status === "published" && event.status === "cancelled") {
-      throw businessError("No se puede publicar un evento cancelado");
     }
 
     if (event.status === status) {
