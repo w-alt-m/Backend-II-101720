@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import mongoose from "mongoose";
 import { TicketRepository } from "../repositories/ticket.repository.js";
 import { EventRepository } from "../repositories/event.repository.js";
-import { sendConfirmationEmail } from "./mail.service.js";
+import { sendConfirmationEmail, sendCancellationEmail } from "./mail.service.js";
 
 const businessError = (message, status = 400) =>
   Object.assign(new Error(message), { status });
@@ -34,6 +34,11 @@ export class TicketService {
       throw businessError(
         "Solo se puede inscribir a eventos con status 'published'"
       );
+    }
+
+    // Validar que el evento no haya finalizado por fecha
+    if (new Date(event.date) < new Date()) {
+      throw businessError("El evento ya finalizó", 400);
     }
 
     // Validar quantity
@@ -149,9 +154,27 @@ export class TicketService {
       throw businessError("El ticket ya está cancelado");
     }
 
-    return this.ticketRepository.updateById(ticketId, {
+    const cancelled = await this.ticketRepository.updateById(ticketId, {
       status: "cancelled",
       cancelledAt: new Date()
     });
+
+    // Obtener datos del evento para el email
+    const event = await this.eventRepository.findById(ticket.event._id || ticket.event);
+
+    // Enviar email de cancelación en segundo plano (no bloquea la respuesta)
+    sendCancellationEmail({
+      to: user.email,
+      userName: user.email,
+      eventTitle: event.title,
+      eventDate: event.date,
+      eventLocation: event.location,
+      quantity: ticket.quantity,
+      reservationCode: ticket.reservationCode
+    }).catch((err) => {
+      console.error("Error al enviar email de cancelación:", err.message);
+    });
+
+    return cancelled;
   }
 }
