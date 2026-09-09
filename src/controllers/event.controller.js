@@ -35,7 +35,7 @@ export const getEvents = async (req, res, next) => {
 
 export const getEventById = async (req, res, next) => {
   try {
-    const event = await eventService.getEventById(req.params.id);
+    const event = await eventService.getEventByIdDTO(req.params.id);
 
     res.json({
       status: "success",

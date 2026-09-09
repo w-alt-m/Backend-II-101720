@@ -1,35 +1,28 @@
-import mongoose from "mongoose";
 import { EventRepository } from "../repositories/event.repository.js";
+import { EventDTO } from "../dto/event.dto.js";
+import { badRequest, notFound, forbidden } from "../utils/errors.js";
+import { validateObjectId } from "../utils/errors.js";
 
 const VALID_STATUSES = ["draft", "published", "cancelled", "finished"];
-
-const businessError = (message, status = 400) =>
-  Object.assign(new Error(message), { status });
 
 export class EventService {
   constructor() {
     this.eventRepository = new EventRepository();
   }
 
-  validateObjectId(id) {
-    if (!mongoose.isValidObjectId(id)) {
-      throw businessError("ID de evento inválido", 400);
-    }
-  }
-
   validateCapacityAndPrice(data) {
     if (data.capacity !== undefined && Number(data.capacity) <= 0) {
-      throw businessError("La capacidad debe ser mayor que 0");
+      throw badRequest("La capacidad debe ser mayor que 0");
     }
 
     if (data.price !== undefined && Number(data.price) < 0) {
-      throw businessError("El precio no puede ser negativo");
+      throw badRequest("El precio no puede ser negativo");
     }
   }
 
   validateStatus(status) {
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
-      throw businessError(
+      throw badRequest(
         `Status inválido. Valores permitidos: ${VALID_STATUSES.join(", ")}`
       );
     }
@@ -48,7 +41,7 @@ export class EventService {
     } = data;
 
     if (!title || !description || !category || !date || !location || capacity === undefined || price === undefined) {
-      throw businessError(
+      throw badRequest(
         "title, description, category, date, location, capacity y price son obligatorios"
       );
     }
@@ -56,17 +49,17 @@ export class EventService {
     const eventDate = new Date(date);
 
     if (Number.isNaN(eventDate.getTime())) {
-      throw businessError("La fecha del evento no es válida");
+      throw badRequest("La fecha del evento no es válida");
     }
 
     if (eventDate <= new Date()) {
-      throw businessError("No se puede crear un evento con fecha pasada");
+      throw badRequest("No se puede crear un evento con fecha pasada");
     }
 
     this.validateCapacityAndPrice({ capacity, price });
     this.validateStatus(status);
 
-    return this.eventRepository.create({
+    const event = await this.eventRepository.create({
       title,
       description,
       category,
@@ -77,18 +70,25 @@ export class EventService {
       status,
       organizer: user.id
     });
+
+    return EventDTO.from(event);
   }
 
   async getEventById(id) {
-    this.validateObjectId(id);
+    validateObjectId(id, "ID de evento");
 
     const event = await this.eventRepository.findById(id);
 
     if (!event) {
-      throw Object.assign(new Error("Evento no encontrado"), { status: 404 });
+      throw notFound("Evento no encontrado");
     }
 
     return event;
+  }
+
+  async getEventByIdDTO(id) {
+    const event = await this.getEventById(id);
+    return EventDTO.from(event);
   }
 
   async getEvents(query) {
@@ -120,7 +120,7 @@ export class EventService {
       if (dateFrom) {
         const from = new Date(dateFrom);
         if (Number.isNaN(from.getTime())) {
-          throw businessError("dateFrom no es una fecha válida");
+          throw badRequest("dateFrom no es una fecha válida");
         }
         filter.date.$gte = from;
       }
@@ -128,7 +128,7 @@ export class EventService {
       if (dateTo) {
         const to = new Date(dateTo);
         if (Number.isNaN(to.getTime())) {
-          throw businessError("dateTo no es una fecha válida");
+          throw badRequest("dateTo no es una fecha válida");
         }
         filter.date.$lte = to;
       }
@@ -138,7 +138,7 @@ export class EventService {
     const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
 
     if (!allowedSortFields.includes(sortField)) {
-      throw businessError(
+      throw badRequest(
         `Campo de ordenamiento inválido. Permitidos: ${allowedSortFields.join(", ")}`
       );
     }
@@ -159,7 +159,7 @@ export class EventService {
     ]);
 
     return {
-      data,
+      data: EventDTO.fromMany(data),
       page: currentPage,
       limit: currentLimit,
       total,
@@ -179,10 +179,7 @@ export class EventService {
     const isOwner = organizerId === user.id;
 
     if (!isOwner) {
-      throw businessError(
-        "No tenés permisos para modificar este evento",
-        403
-      );
+      throw forbidden("No tenés permisos para modificar este evento");
     }
   }
 
@@ -190,7 +187,7 @@ export class EventService {
     const event = await this.getEventById(id);
 
     if (event.status === "cancelled") {
-      throw businessError("Un evento cancelado no puede modificarse");
+      throw badRequest("Un evento cancelado no puede modificarse");
     }
 
     await this.assertCanManage(event, user);
@@ -217,11 +214,11 @@ export class EventService {
       const newDate = new Date(updateData.date);
 
       if (Number.isNaN(newDate.getTime())) {
-        throw businessError("La fecha no es válida");
+        throw badRequest("La fecha no es válida");
       }
 
       if (newDate <= new Date()) {
-        throw businessError("La fecha del evento no puede estar en el pasado");
+        throw badRequest("La fecha del evento no puede estar en el pasado");
       }
 
       updateData.date = newDate;
@@ -230,21 +227,22 @@ export class EventService {
     this.validateCapacityAndPrice(updateData);
 
     if (Object.keys(updateData).length === 0) {
-      throw businessError("No hay campos válidos para actualizar");
+      throw badRequest("No hay campos válidos para actualizar");
     }
 
-    return this.eventRepository.updateById(id, updateData);
+    const updated = await this.eventRepository.updateById(id, updateData);
+    return EventDTO.from(updated);
   }
 
   async changeStatus(id, status, user) {
     if (!status) {
-      throw businessError("El campo status es obligatorio");
+      throw badRequest("El campo status es obligatorio");
     }
 
     const event = await this.getEventById(id);
 
     if (event.status === "cancelled") {
-      throw businessError("Un evento cancelado no puede cambiar de estado");
+      throw badRequest("Un evento cancelado no puede cambiar de estado");
     }
 
     await this.assertCanManage(event, user);
@@ -252,13 +250,14 @@ export class EventService {
     this.validateStatus(status);
 
     if (status === "published" && event.status === "finished") {
-      throw businessError("No se puede publicar un evento finalizado");
+      throw badRequest("No se puede publicar un evento finalizado");
     }
 
     if (event.status === status) {
-      throw businessError(`El evento ya tiene status "${status}"`);
+      throw badRequest(`El evento ya tiene status "${status}"`);
     }
 
-    return this.eventRepository.updateById(id, { status });
+    const updated = await this.eventRepository.updateById(id, { status });
+    return EventDTO.from(updated);
   }
 }

@@ -1,34 +1,36 @@
 import Event from "../models/event.model.js";
 
 export class EventDAO {
+  async findById(id) {
+    return Event.findById(id);
+  }
+
+  async findOne(filter) {
+    return Event.findOne(filter);
+  }
+
+  async find(filter = {}, { skip = 0, limit = 10, sort = { date: 1 }, populate = null } = {}) {
+    const query = Event.find(filter).sort(sort).skip(skip).limit(limit);
+
+    if (populate) {
+      query.populate(populate);
+    }
+
+    return query;
+  }
+
   async create(data) {
     return Event.create(data);
   }
 
-  async findById(id) {
-    return Event.findById(id).populate("organizer", "first_name last_name email role");
+  async update(id, data) {
+    return Event.findByIdAndUpdate(id, data, {
+      new: true,
+      runValidators: true
+    });
   }
 
-  async updateById(id, data) {
-    return Event.findByIdAndUpdate(
-      id,
-      data,
-      {
-        new: true,
-        runValidators: true
-      }
-    ).populate("organizer", "first_name last_name email role");
-  }
-
-  async findAll(filter, { skip, limit, sort }) {
-    return Event.find(filter)
-      .populate("organizer", "first_name last_name email role")
-      .sort(sort)
-      .skip(skip)
-      .limit(limit);
-  }
-
-  async count(filter) {
+  async countDocuments(filter = {}) {
     return Event.countDocuments(filter);
   }
 }

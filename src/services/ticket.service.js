@@ -1,11 +1,9 @@
 import crypto from "node:crypto";
-import mongoose from "mongoose";
 import { TicketRepository } from "../repositories/ticket.repository.js";
 import { EventRepository } from "../repositories/event.repository.js";
+import { TicketDTO } from "../dto/ticket.dto.js";
 import { sendConfirmationEmail, sendCancellationEmail } from "./mail.service.js";
-
-const businessError = (message, status = 400) =>
-  Object.assign(new Error(message), { status });
+import { badRequest, notFound, forbidden, validateObjectId } from "../utils/errors.js";
 
 export class TicketService {
   constructor() {
@@ -13,59 +11,53 @@ export class TicketService {
     this.eventRepository = new EventRepository();
   }
 
-  validateObjectId(id, label = "ID") {
-    if (!mongoose.isValidObjectId(id)) {
-      throw businessError(`${label} inválido`, 400);
-    }
-  }
-
   async createTicket(eventId, user, data) {
-    this.validateObjectId(eventId, "ID de evento");
+    validateObjectId(eventId, "ID de evento");
 
     // Verificar existencia del evento
     const event = await this.eventRepository.findById(eventId);
 
     if (!event) {
-      throw businessError("Evento no encontrado", 404);
+      throw notFound("Evento no encontrado");
     }
 
     // Validar que el evento esté publicado
     if (event.status !== "published") {
-      throw businessError(
+      throw badRequest(
         "Solo se puede inscribir a eventos con status 'published'"
       );
     }
 
     // Validar que el evento no haya finalizado por fecha
     if (new Date(event.date) < new Date()) {
-      throw businessError("El evento ya finalizó", 400);
+      throw badRequest("El evento ya finalizó");
     }
 
     // Validar quantity
     const quantity = Number(data.quantity);
 
     if (!quantity || quantity < 1 || !Number.isInteger(quantity)) {
-      throw businessError("La cantidad debe ser un número entero mayor a 0");
+      throw badRequest("La cantidad debe ser un número entero mayor a 0");
     }
 
     // Evitar inscripción duplicada
-    const existingTicket = await this.ticketRepository.findByUserAndEventActive(
+    const existingTicket = await this.ticketRepository.findActiveByUserAndEvent(
       user.id,
       eventId
     );
 
     if (existingTicket) {
-      throw businessError("Ya tenés un ticket activo para este evento");
+      throw badRequest("Ya tenés un ticket activo para este evento");
     }
 
     // Control de cupos
     const occupiedSlots = await this.ticketRepository.countActiveByEvent(
-      new mongoose.Types.ObjectId(eventId)
+      eventId
     );
 
     if (occupiedSlots + quantity > event.capacity) {
       const available = event.capacity - occupiedSlots;
-      throw businessError(
+      throw badRequest(
         `Cupo insuficiente. Disponibles: ${available}, solicitados: ${quantity}`
       );
     }
@@ -95,20 +87,21 @@ export class TicketService {
       console.error("Error al enviar email de confirmación:", err.message);
     });
 
-    return ticket;
+    return TicketDTO.from(ticket);
   }
 
   async getMyTickets(userId) {
-    return this.ticketRepository.findByUser(userId);
+    const tickets = await this.ticketRepository.findByUser(userId);
+    return TicketDTO.fromMany(tickets);
   }
 
   async getEventTickets(eventId, user) {
-    this.validateObjectId(eventId, "ID de evento");
+    validateObjectId(eventId, "ID de evento");
 
     const event = await this.eventRepository.findById(eventId);
 
     if (!event) {
-      throw businessError("Evento no encontrado", 404);
+      throw notFound("Evento no encontrado");
     }
 
     // Solo admin o el organizer dueño del evento pueden ver los tickets
@@ -121,22 +114,22 @@ export class TicketService {
     const isOwner = organizerId === user.id;
 
     if (!isAdmin && !isOwner) {
-      throw businessError(
-        "No tenés permisos para ver los tickets de este evento",
-        403
+      throw forbidden(
+        "No tenés permisos para ver los tickets de este evento"
       );
     }
 
-    return this.ticketRepository.findByEvent(eventId);
+    const tickets = await this.ticketRepository.findByEvent(eventId);
+    return TicketDTO.fromMany(tickets);
   }
 
   async cancelTicket(ticketId, user) {
-    this.validateObjectId(ticketId, "ID de ticket");
+    validateObjectId(ticketId, "ID de ticket");
 
     const ticket = await this.ticketRepository.findById(ticketId);
 
     if (!ticket) {
-      throw businessError("Ticket no encontrado", 404);
+      throw notFound("Ticket no encontrado");
     }
 
     // Solo el dueño del ticket o admin pueden cancelar
@@ -144,20 +137,16 @@ export class TicketService {
     const isOwner = ticket.user._id.toString() === user.id;
 
     if (!isAdmin && !isOwner) {
-      throw businessError(
-        "No tenés permisos para cancelar este ticket",
-        403
+      throw forbidden(
+        "No tenés permisos para cancelar este ticket"
       );
     }
 
     if (ticket.status === "cancelled") {
-      throw businessError("El ticket ya está cancelado");
+      throw badRequest("El ticket ya está cancelado");
     }
 
-    const cancelled = await this.ticketRepository.updateById(ticketId, {
-      status: "cancelled",
-      cancelledAt: new Date()
-    });
+    const cancelled = await this.ticketRepository.cancelTicket(ticketId);
 
     // Obtener datos del evento para el email
     const event = await this.eventRepository.findById(ticket.event._id || ticket.event);
@@ -175,6 +164,6 @@ export class TicketService {
       console.error("Error al enviar email de cancelación:", err.message);
     });
 
-    return cancelled;
+    return TicketDTO.from(cancelled);
   }
 }

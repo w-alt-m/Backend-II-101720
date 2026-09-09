@@ -1,24 +1,16 @@
-import { generateToken } from "../utils/jwt.js";
+import { UserDTO } from "../dto/user.dto.js";
 
 export const register = (req, res) => {
   const user = req.user;
 
   res.status(201).json({
     status: "success",
-    payload: {
-      id: user._id,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      email: user.email,
-      role: user.role
-    }
+    payload: UserDTO.from(user)
   });
 };
 
 export const login = (req, res) => {
-  const user = req.user;
-
-  const token = generateToken(user);
+  const token = req.user.token;
 
   res.cookie("currentUser", token, {
     httpOnly: true,

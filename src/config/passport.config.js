@@ -1,9 +1,12 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as JwtStrategy, ExtractJwt } from "passport-jwt";
+import { Strategy as JwtStrategy } from "passport-jwt";
 
-import User from "../models/user.model.js";
+import { UserRepository } from "../repositories/user.repository.js";
 import { hashPassword, comparePassword } from "../utils/password.js";
+import { generateToken } from "../utils/jwt.js";
+
+const userRepository = new UserRepository();
 
 const jwtSecret = process.env.JWT_SECRET;
 
@@ -30,7 +33,7 @@ passport.use(
           return done(null, false, { message: "Faltan campos obligatorios" });
         }
 
-        const existingUser = await User.findOne({ email: normalizedEmail });
+        const existingUser = await userRepository.findByEmail(normalizedEmail);
 
         if (existingUser) {
           return done(null, false, { message: "El email ya está registrado" });
@@ -38,7 +41,7 @@ passport.use(
 
         const hashedPassword = await hashPassword(password);
 
-        const newUser = await User.create({
+        const newUser = await userRepository.create({
           first_name,
           last_name,
           email: normalizedEmail,
@@ -74,7 +77,7 @@ passport.use(
           return done(null, false, { message: "Credenciales inválidas" });
         }
 
-        const user = await User.findOne({ email: normalizedEmail });
+        const user = await userRepository.findByEmail(normalizedEmail);
 
         if (!user) {
           return done(null, false, { message: "Credenciales inválidas" });
@@ -86,9 +89,10 @@ passport.use(
           return done(null, false, { message: "Credenciales inválidas" });
         }
 
-        // Devolver usuario sin password
+        // Devolver usuario sin password, con token generado
         const userObj = user.toObject();
         delete userObj.password;
+        userObj.token = generateToken(user);
 
         return done(null, userObj);
       } catch (error) {

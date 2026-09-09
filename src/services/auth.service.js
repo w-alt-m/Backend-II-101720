@@ -1,6 +1,8 @@
 import { UserRepository } from "../repositories/user.repository.js";
+import { UserDTO } from "../dto/user.dto.js";
 import { comparePassword, hashPassword } from "../utils/password.js";
 import { generateToken } from "../utils/jwt.js";
+import { badRequest, unauthorized, conflict } from "../utils/errors.js";
 
 export class AuthService {
   constructor() {
@@ -14,35 +16,23 @@ export class AuthService {
     const password = data.password;
 
     if (!first_name || !last_name || !email || !password) {
-      throw Object.assign(
-        new Error("Faltan campos obligatorios"),
-        { status: 400 }
-      );
+      throw badRequest("Faltan campos obligatorios");
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
-      throw Object.assign(
-        new Error("El formato del email no es válido"),
-        { status: 400 }
-      );
+      throw badRequest("El formato del email no es válido");
     }
 
     if (password.length < 6) {
-      throw Object.assign(
-        new Error("La contraseña debe tener al menos 6 caracteres"),
-        { status: 400 }
-      );
+      throw badRequest("La contraseña debe tener al menos 6 caracteres");
     }
 
     const existingUser = await this.userRepository.findByEmail(email);
 
     if (existingUser) {
-      throw Object.assign(
-        new Error("El email ya está registrado"),
-        { status: 409 }
-      );
+      throw conflict("El email ya está registrado");
     }
 
     const hashedPassword = await hashPassword(password);
@@ -55,10 +45,7 @@ export class AuthService {
       role: "user"
     });
 
-    // Devolver usuario sin password
-    const userObj = newUser.toObject();
-    delete userObj.password;
-    return userObj;
+    return UserDTO.from(newUser);
   }
 
   async login(email, password) {
@@ -67,13 +54,13 @@ export class AuthService {
     const user = await this.userRepository.findByEmail(normalizedEmail);
 
     if (!user) {
-      throw Object.assign(new Error("Credenciales inválidas"), { status: 401 });
+      throw unauthorized("Credenciales inválidas");
     }
 
     const validPassword = await comparePassword(password, user.password);
 
     if (!validPassword) {
-      throw Object.assign(new Error("Credenciales inválidas"), { status: 401 });
+      throw unauthorized("Credenciales inválidas");
     }
 
     return {

@@ -10,6 +10,7 @@ import sessionsRouter from "./routes/sessions.router.js";
 import eventsRouter from "./routes/events.router.js";
 import usersRouter from "./routes/users.router.js";
 import ticketsRouter from "./routes/tickets.router.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
 
@@ -32,15 +33,7 @@ app.use((req, res) => {
   });
 });
 
-app.use((err, req, res, next) => {
-  console.error(err);
-
-  const status = err.status || 500;
-
-  res.status(status).json({
-    status: "error",
-    message: err.message || "Error interno del servidor"
-  });
-});
+app.use(errorHandler);
 
 export default app;
+
