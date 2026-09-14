@@ -3,7 +3,7 @@ import { TicketRepository } from "../repositories/ticket.repository.js";
 import { EventRepository } from "../repositories/event.repository.js";
 import { TicketDTO } from "../dto/ticket.dto.js";
 import { sendConfirmationEmail, sendCancellationEmail } from "./mail.service.js";
-import { badRequest, notFound, forbidden, validateObjectId } from "../utils/errors.js";
+import { badRequest, notFound, forbidden, conflict, validateObjectId } from "../utils/errors.js";
 
 export class TicketService {
   constructor() {
@@ -47,7 +47,7 @@ export class TicketService {
     );
 
     if (existingTicket) {
-      throw badRequest("Ya tenés un ticket activo para este evento");
+      throw conflict("Ya tenés un ticket activo para este evento");
     }
 
     // Control de cupos
@@ -57,7 +57,7 @@ export class TicketService {
 
     if (occupiedSlots + quantity > event.capacity) {
       const available = event.capacity - occupiedSlots;
-      throw badRequest(
+      throw conflict(
         `Cupo insuficiente. Disponibles: ${available}, solicitados: ${quantity}`
       );
     }
@@ -83,9 +83,7 @@ export class TicketService {
       eventLocation: event.location,
       quantity,
       reservationCode
-    }).catch((err) => {
-      console.error("Error al enviar email de confirmación:", err.message);
-    });
+    }).catch(() => {});
 
     return TicketDTO.from(ticket);
   }
@@ -160,9 +158,7 @@ export class TicketService {
       eventLocation: event.location,
       quantity: ticket.quantity,
       reservationCode: ticket.reservationCode
-    }).catch((err) => {
-      console.error("Error al enviar email de cancelación:", err.message);
-    });
+    }).catch(() => {});
 
     return TicketDTO.from(cancelled);
   }
