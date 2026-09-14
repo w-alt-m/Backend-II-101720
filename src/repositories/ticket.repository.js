@@ -13,15 +13,12 @@ export class TicketRepository {
     this.dao = new TicketDAO();
   }
 
-  async create(data) {
-    const ticket = await this.dao.create(data);
-    return ticket.populate(TICKET_POPULATES);
+  create(data) {
+    return this.dao.createAndPopulate(data, TICKET_POPULATES);
   }
 
-  async findById(id) {
-    const ticket = await this.dao.findById(id);
-    if (!ticket) return null;
-    return ticket.populate(TICKET_POPULATES);
+  findById(id) {
+    return this.dao.findByIdAndPopulate(id, TICKET_POPULATES);
   }
 
   findActiveByUserAndEvent(userId, eventId) {
@@ -56,10 +53,8 @@ export class TicketRepository {
     );
   }
 
-  async updateById(id, data) {
-    const ticket = await this.dao.update(id, data);
-    if (!ticket) return null;
-    return ticket.populate(TICKET_POPULATES);
+  updateById(id, data) {
+    return this.dao.updateAndPopulate(id, data, TICKET_POPULATES);
   }
 
   cancelTicket(id) {
@@ -69,3 +64,4 @@ export class TicketRepository {
     });
   }
 }
+

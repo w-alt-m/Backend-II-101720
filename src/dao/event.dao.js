@@ -33,4 +33,24 @@ export class EventDAO {
   async countDocuments(filter = {}) {
     return Event.countDocuments(filter);
   }
+
+  async findByIdAndPopulate(id, populate) {
+    const doc = await Event.findById(id);
+    if (!doc) return null;
+    return doc.populate(populate);
+  }
+
+  async createAndPopulate(data, populate) {
+    const doc = await Event.create(data);
+    return doc.populate(populate);
+  }
+
+  async updateAndPopulate(id, data, populate) {
+    const doc = await Event.findByIdAndUpdate(id, data, {
+      new: true,
+      runValidators: true
+    });
+    if (!doc) return null;
+    return doc.populate(populate);
+  }
 }

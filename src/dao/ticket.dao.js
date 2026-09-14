@@ -69,5 +69,36 @@ export class TicketDAO {
 
     return result.length > 0 ? result[0].totalQuantity : 0;
   }
-}
 
+  async findByIdAndPopulate(id, populate) {
+    const doc = await Ticket.findById(id);
+    if (!doc) return null;
+    if (Array.isArray(populate)) {
+      for (const p of populate) {
+        await doc.populate(p);
+      }
+      return doc;
+    }
+    return doc.populate(populate);
+  }
+
+  async createAndPopulate(data, populate) {
+    const doc = await Ticket.create(data);
+    return doc.populate(populate);
+  }
+
+  async updateAndPopulate(id, data, populate) {
+    const doc = await Ticket.findByIdAndUpdate(id, data, {
+      new: true,
+      runValidators: true
+    });
+    if (!doc) return null;
+    if (Array.isArray(populate)) {
+      for (const p of populate) {
+        await doc.populate(p);
+      }
+      return doc;
+    }
+    return doc.populate(populate);
+  }
+}

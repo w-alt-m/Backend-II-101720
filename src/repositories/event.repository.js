@@ -1,27 +1,23 @@
 import { EventDAO } from "../dao/event.dao.js";
 import { ORGANIZER_FIELDS } from "./user.repository.js";
 
+const ORGANIZER_POPULATE = { path: "organizer", select: ORGANIZER_FIELDS };
+
 export class EventRepository {
   constructor() {
     this.dao = new EventDAO();
   }
 
-  async create(data) {
-    const event = await this.dao.create(data);
-    // Populate organizer para devolver datos completos
-    return event.populate("organizer", ORGANIZER_FIELDS);
+  create(data) {
+    return this.dao.createAndPopulate(data, ORGANIZER_POPULATE);
   }
 
-  async findById(id) {
-    const event = await this.dao.findById(id);
-    if (!event) return null;
-    return event.populate("organizer", ORGANIZER_FIELDS);
+  findById(id) {
+    return this.dao.findByIdAndPopulate(id, ORGANIZER_POPULATE);
   }
 
-  async updateById(id, data) {
-    const event = await this.dao.update(id, data);
-    if (!event) return null;
-    return event.populate("organizer", ORGANIZER_FIELDS);
+  updateById(id, data) {
+    return this.dao.updateAndPopulate(id, data, ORGANIZER_POPULATE);
   }
 
   findPublishedEvents(filter = {}, pagination = {}) {
@@ -33,7 +29,7 @@ export class EventRepository {
       skip,
       limit,
       sort,
-      populate: { path: "organizer", select: ORGANIZER_FIELDS }
+      populate: ORGANIZER_POPULATE
     });
   }
 
@@ -41,3 +37,4 @@ export class EventRepository {
     return this.dao.countDocuments(filter);
   }
 }
+
