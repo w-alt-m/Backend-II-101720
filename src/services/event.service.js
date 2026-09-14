@@ -1,7 +1,6 @@
 import { EventRepository } from "../repositories/event.repository.js";
 import { EventDTO } from "../dto/event.dto.js";
-import { badRequest, notFound, forbidden } from "../utils/errors.js";
-import { validateObjectId } from "../utils/errors.js";
+import { badRequest, notFound, forbidden, validateObjectId } from "../utils/errors.js";
 
 const VALID_STATUSES = ["draft", "published", "cancelled", "finished"];
 

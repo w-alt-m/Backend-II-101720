@@ -41,10 +41,6 @@ export class TicketDAO {
     return Ticket.countDocuments(filter);
   }
 
-  async aggregate(pipeline) {
-    return Ticket.aggregate(pipeline);
-  }
-
   /**
    * Cuenta la cantidad total de tickets activos para un evento dado.
    * Convierte eventId (string) a ObjectId internamente para el pipeline de aggregation.
