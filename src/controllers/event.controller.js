@@ -22,7 +22,7 @@ export const getEvents = async (req, res, next) => {
 
     res.json({
       status: "success",
-      payload: result.data,
+      data: result.data,
       page: result.page,
       limit: result.limit,
       total: result.total,
