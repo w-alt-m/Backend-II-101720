@@ -1,83 +1,88 @@
 // ============================================================
-// app.js — Configuración de la Aplicación Express
+// app.js — Configuración de la aplicación Express
 // ============================================================
-// PROPÓSITO DE ESTE ARCHIVO:
-//   Crear y configurar la instancia de Express (middlewares globales,
-//   parsers de cuerpo, rutas). NO arranca el servidor (eso lo hace
-//   server.js). Esta separación permite importar 'app' en tests
-//   sin arrancar un servidor real.
+// Este archivo es el "corazón" de la aplicación.
+// Aquí se configura Express: qué middlewares usar, qué rutas existen
+// y cómo manejar los errores.
 //
-// ORDEN DE REGISTRO EN EXPRESS (IMPORTANTE):
-//   El orden en que se llama a app.use() define el orden de ejecución.
-//   1. Middlewares de parsing (deben ir primero para que req.body esté disponible)
-//   2. Passport (autenticación disponible para todas las rutas)
-//   3. Rutas de la API
-//   4. Handler de 404 (debe ir DESPUÉS de todas las rutas)
-//   5. Handler de errores (SIEMPRE el último)
+// ¿Qué es Express?
+//   Express es una librería que nos permite crear servidores web en Node.js
+//   de forma sencilla. Con Express definimos qué URL hace qué cosa.
 //
-// CONCEPTO JS — Importar para efectos secundarios:
-//   'import "./config/passport.config.js"' no importa ningún valor exportado.
-//   Se importa SOLO para que el código del archivo se ejecute (registrar
-//   las estrategias de Passport con passport.use(...)). Este es el patrón
-//   "side-effect import" de ES6.
+// ¿Por qué está separado de server.js?
+//   app.js configura CÓMO funciona la app.
+//   server.js la ENCIENDE. Tenerlos separados hace el código más ordenado.
 //
-// CONCEPTO — express.json() y express.urlencoded():
-//   Son middlewares que parsean el cuerpo (body) del request:
-//   json()       → parsea 'Content-Type: application/json' → popula req.body
-//   urlencoded() → parsea formularios HTML (application/x-www-form-urlencoded)
-//   cookieParser → parsea las cookies del header → popula req.cookies
+// Orden importante: Express ejecuta los app.use() de arriba hacia abajo.
+//   1. Primero los "parsers" (para poder leer el cuerpo de los pedidos)
+//   2. Luego Passport (para la autenticación)
+//   3. Luego las rutas de la API
+//   4. El manejador de "ruta no encontrada" (404), al final
+//   5. El manejador de errores, siempre el último
 // ============================================================
 
-// 'dotenv/config' carga las variables del .env en process.env
-// Debe ser el primer import de toda la app para que las demás partes
-// ya tengan acceso a process.env.MONGO_URL, JWT_SECRET, etc.
+// dotenv/config lee el archivo .env y carga las variables de entorno.
+// Tiene que ser el primero en importarse para que el resto del código
+// ya pueda acceder a variables como process.env.MONGO_URL o process.env.JWT_SECRET.
 import "dotenv/config";
 
 import express      from "express";
 import cookieParser from "cookie-parser";
 import passport     from "passport";
 
-// Importar para efectos secundarios: registra las estrategias de Passport
+// Este import no trae ningún valor, solo hace que el archivo se ejecute.
+// Eso registra las "estrategias" de Passport (register, login, current).
+// Es como enchufar un módulo para que se active.
 import "./config/passport.config.js";
 
-// Importar routers (cada uno agrupa las rutas de un recurso)
+// Cada router agrupa las rutas de un "recurso" (eventos, usuarios, etc.)
 import healthRouter   from "./routes/health.router.js";
 import sessionsRouter from "./routes/sessions.router.js";
 import eventsRouter   from "./routes/events.router.js";
 import usersRouter    from "./routes/users.router.js";
 import ticketsRouter  from "./routes/tickets.router.js";
 
-// Importar el middleware centralizado de errores
+// El middleware de errores atrapa cualquier error que ocurra en la app
 import { errorHandler } from "./middlewares/error.middleware.js";
 
-// express() crea la instancia de la aplicación.
-// 'app' es el objeto principal que configura middlewares y rutas.
+// express() crea la aplicación. Todo se configura sobre este objeto "app".
 const app = express();
 
-// ── Middlewares globales de parsing ─────────────────────────
-// Se aplican a TODAS las peticiones, antes de llegar a cualquier ruta.
-app.use(express.json());                       // Lee JSON del body → req.body
-app.use(express.urlencoded({ extended: true })); // Lee formularios → req.body
-app.use(cookieParser());                        // Lee cookies → req.cookies
+// ── Middlewares de parsing ───────────────────────────────────
+// Un middleware es una función que procesa el pedido ANTES de que llegue a la ruta.
+// Estos tres se aplican a TODAS las rutas de la aplicación.
+
+// express.json() permite que la app entienda pedidos con formato JSON en el body.
+// Sin esto, req.body estaría vacío cuando el cliente envíe datos JSON.
+app.use(express.json());
+
+// express.urlencoded() permite leer datos enviados desde formularios HTML.
+// { extended: true } es una opción técnica que permite estructuras de datos complejas.
+app.use(express.urlencoded({ extended: true }));
+
+// cookieParser() permite leer las cookies que el navegador envía con cada pedido.
+// Las cookies van a estar disponibles en req.cookies.
+app.use(cookieParser());
 
 // ── Inicializar Passport ─────────────────────────────────────
-// passport.initialize() es un middleware que prepara Passport para cada request.
-// Sin session: false en cada estrategia, usaría sesiones de Express (no JWT).
+// Passport es la librería que maneja la autenticación (login, JWT, etc.).
+// passport.initialize() lo prepara para que funcione en cada pedido.
 app.use(passport.initialize());
 
-// ── Montar routers en sus prefijos de URL ───────────────────
-// app.use("/api/events", eventsRouter) monta el router de eventos.
-// Todas las rutas definidas en eventsRouter son relativas a "/api/events".
-// Ej: router.get("/") en eventsRouter → accesible como GET /api/events/
+// ── Rutas de la API ──────────────────────────────────────────
+// app.use("/api/events", eventsRouter) le dice a Express:
+//   "Todos los pedidos que empiecen con /api/events, mandáselos a eventsRouter".
+// Así organizamos la API por "recursos": eventos, usuarios, sesiones, etc.
 app.use("/api/health",    healthRouter);
 app.use("/api/sessions",  sessionsRouter);
 app.use("/api/events",    eventsRouter);
 app.use("/api/users",     usersRouter);
 app.use("/api/tickets",   ticketsRouter);
 
-// ── Manejador de rutas no encontradas (404) ─────────────────
-// Si ninguna ruta anterior coincidió con la petición, se llega aquí.
-// Es importante que esté DESPUÉS de todos los routers.
+// ── Manejador de rutas no encontradas (404) ──────────────────
+// Si ninguna de las rutas de arriba coincidió con el pedido, caemos aquí.
+// Respondemos con un error 404 que dice qué ruta se intentó acceder.
+// Es importante que esté DESPUÉS de todas las rutas para que sea el último recurso.
 app.use((req, res) => {
   res.status(404).json({
     status: "error",
@@ -85,10 +90,10 @@ app.use((req, res) => {
   });
 });
 
-// ── Middleware centralizado de errores ───────────────────────
-// Captura todos los errores pasados con next(error) en los handlers.
-// DEBE ser el ÚLTIMO middleware registrado (tiene 4 parámetros).
+// ── Manejador central de errores ────────────────────────────
+// Este middleware atrapa cualquier error que los otros hayan lanzado con next(error).
+// SIEMPRE va al final. Express lo reconoce porque tiene 4 parámetros: (err, req, res, next).
 app.use(errorHandler);
 
-// 'export default app' → server.js importa app para llamar a app.listen()
+// Exportamos la app para que server.js pueda encenderla con app.listen()
 export default app;

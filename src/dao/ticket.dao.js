@@ -1,46 +1,33 @@
 // ============================================================
-// dao/ticket.dao.js — Data Access Object de Ticket
+// dao/ticket.dao.js — Operaciones de tickets en la base de datos
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (DAOs):
-//   Único punto de acceso a la colección 'tickets' de MongoDB.
-//   Contiene la consulta más avanzada del proyecto: una aggregation
-//   pipeline para contar cupos ocupados de forma eficiente.
+// Este archivo es el encargado de consultar y modificar la colección
+// de "tickets" (las entradas o inscripciones a eventos) en MongoDB.
 //
-// CONCEPTO — MongoDB Aggregation Pipeline:
-//   Alternativa avanzada a .find() cuando necesitamos transformar/
-//   agrupar datos dentro de la BD antes de traerlos a Node.
-//   Se define como un array de etapas; cada etapa procesa la salida
-//   de la etapa anterior:
-//     $match  → filtra documentos (equivale a un WHERE en SQL)
-//     $group  → agrupa y aplica operaciones (equivale a GROUP BY + SUM)
-//
-// CONCEPTO JS — Array.isArray():
-//   Verifica si un valor es un array verdadero.
-//   Útil aquí porque 'populate' puede ser un objeto o un array de objetos.
-//
-// CONCEPTO JS — for...of:
-//   'for (const p of populate)' itera sobre los elementos de un array
-//   de forma secuencial. Equivale a un for clásico pero más legible.
-//   Usamos 'await' dentro porque cada .populate(p) es asíncrono.
+// ¿Qué hace este archivo?
+// - Busca tickets por su ID, por usuario o por evento.
+// - Guarda nuevos tickets cuando alguien se inscribe.
+// - Modifica tickets (por ejemplo, al cancelarlos).
+// - Cuenta cuántos cupos están ocupados para un evento sumando las entradas.
 // ============================================================
 
 import mongoose from "mongoose";
 import Ticket   from "../models/ticket.model.js";
 
 export class TicketDAO {
+  // Busca un ticket por su identificador único (_id)
   async findById(id) {
     return Ticket.findById(id);
   }
 
-  // ENTRADA: filter — criterios de búsqueda
-  //          options — { sort, populate } para personalizar la consulta
+  // Busca tickets según un filtro y opcionalmente completa datos relacionados (populate)
   async find(filter = {}, { sort = { createdAt: -1 }, populate = null } = {}) {
     const query = Ticket.find(filter).sort(sort);
 
+    // Si nos pidieron completar datos (como el usuario o el evento):
     if (populate) {
-      // populate puede ser un objeto o un array de objetos
       if (Array.isArray(populate)) {
-        // Si es array, encadenamos un populate por cada elemento
+        // Si es una lista de populates, aplicamos uno por uno
         for (const p of populate) query.populate(p);
       } else {
         query.populate(populate);
@@ -50,41 +37,44 @@ export class TicketDAO {
     return query;
   }
 
-  // ENTRADA: filter — objeto de búsqueda exacta
-  // RETORNA: primer ticket que coincide, o null
+  // Busca el primer ticket que cumpla con una condición específica
   async findOne(filter) {
     return Ticket.findOne(filter);
   }
 
+  // Guarda un nuevo ticket en la base de datos
   async create(data) {
     return Ticket.create(data);
   }
 
+  // Modifica un ticket existente y devuelve el documento actualizado
   async update(id, data) {
     return Ticket.findByIdAndUpdate(id, data, { new: true, runValidators: true });
   }
 
-  // ── Aggregation Pipeline ────────────────────────────────────
-  // ENTRADA: eventId — string del ObjectId del evento
-  // PROCESO: suma el campo 'quantity' de todos los tickets activos del evento
-  // RETORNA: número entero con los cupos ya ocupados (0 si no hay ninguno)
-  // PROPÓSITO: verificar si hay cupo disponible antes de crear un ticket nuevo
+  // ── Contar cupos ocupados de un evento ───────────────────────
+  // ¿Cómo funciona?
+  // Para saber cuántos lugares ya se ocuparon en un evento, le pedimos a MongoDB
+  // que haga la suma directamente en su motor con "aggregate". Esto es mucho más rápido
+  // que traer todos los tickets a nuestro servidor para sumarlos a mano.
+  //
+  // Paso 1 ($match): busca solo los tickets de ese evento que estén "confirmed" o "pending".
+  // Paso 2 ($group): suma la cantidad (quantity) de todos esos tickets.
   async countActiveByEvent(eventId) {
-    // La pipeline de aggregation necesita un ObjectId real, no un string
+    // Convertimos el ID de texto al tipo ObjectId que entiende MongoDB
     const objectId = new mongoose.Types.ObjectId(eventId);
 
     const result = await Ticket.aggregate([
-      // Etapa 1: filtrar solo los tickets del evento con status activo
+      // 1. Filtramos solo los tickets activos de este evento
       { $match: { event: objectId, status: { $in: ["confirmed", "pending"] } } },
 
-      // Etapa 2: sumar el campo 'quantity' de todos los documentos filtrados
-      // _id: null → agrupa TODOS en un solo grupo
-      // totalQuantity: { $sum: "$quantity" } → suma el campo quantity
+      // 2. Sumamos el campo 'quantity' de todos los tickets encontrados
       { $group: { _id: null, totalQuantity: { $sum: "$quantity" } } }
     ]);
 
-    // Si no hay tickets activos, result es [] → retornamos 0
-    // Si hay tickets, result es [{ _id: null, totalQuantity: 5 }] → retornamos 5
+    // Si nadie compró tickets todavía, devolvemos 0.
+    // Si hay tickets, devolvemos el total sumado.
     return result.length > 0 ? result[0].totalQuantity : 0;
   }
 }
+

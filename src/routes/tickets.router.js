@@ -1,23 +1,24 @@
 // ============================================================
-// routes/tickets.router.js — Router de Tickets
+// routes/tickets.router.js — Rutas de tickets propios del usuario
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Routes):
-//   Manejar las rutas de tickets que NO están bajo un evento específico:
-//   ver mis propios tickets y cancelar un ticket por su ID.
-//   Los tickets de un evento viven en events.router.js (/:eid/tickets).
+// Este archivo maneja las rutas donde un usuario interactúa con
+// sus propios tickets: ver los que compró o cancelar uno.
 //
-// CONCEPTO — Separación de routers por recurso:
-//   Hay DOS routers que tocan tickets:
-//     • events.router.js → tickets como sub-recurso de un evento
-//       (POST /api/events/:eid/tickets, GET /api/events/:eid/tickets)
-//     • tickets.router.js → tickets como recurso independiente
-//       (GET /api/tickets/my-tickets, PATCH /api/tickets/:tid/cancel)
-//   Esto sigue el diseño RESTful: "obtener mis tickets" no pertenece
-//   semánticamente a un evento específico → tiene su propio router.
+// ¿Por qué hay tickets también en events.router.js?
+//   Porque hay dos tipos de acciones con tickets:
 //
-// CONCEPTO — Todos requieren autenticación:
-//   Un usuario no autenticado no debería poder ver ni cancelar tickets.
-//   Por eso authenticateJWT está presente en TODAS las rutas de este router.
+//   En events.router.js:
+//     - Comprar un ticket para un evento → POST /api/events/:eid/tickets
+//     - Ver todos los tickets de un evento → GET /api/events/:eid/tickets
+//   Esas rutas "pertenecen" a un evento específico.
+//
+//   En este archivo (tickets.router.js):
+//     - Ver MIS tickets → GET /api/tickets/my-tickets
+//     - Cancelar UN ticket → PATCH /api/tickets/:tid/cancel
+//   Estas rutas son del usuario, no de un evento en particular.
+//
+// Todas las rutas de este archivo requieren que el usuario esté logueado.
+// Un usuario sin login no debería poder ver ni cancelar tickets.
 // ============================================================
 
 import { Router } from "express";
@@ -27,14 +28,13 @@ import { authenticateJWT } from "../middlewares/auth.middleware.js";
 const router = Router();
 
 // GET /api/tickets/my-tickets
-// ENTRADA: JWT en la cookie → authenticateJWT extrae req.user.id
-// RETORNA: array de TicketDTO del usuario autenticado
+// authenticateJWT pone req.user en el pedido.
+// El controller usa req.user.id para buscar solo los tickets de ese usuario.
 router.get("/my-tickets", authenticateJWT, getMyTickets);
 
 // PATCH /api/tickets/:tid/cancel
-// ENTRADA: req.params.tid — ObjectId del ticket a cancelar
-//          req.user — para verificar en el service si es el dueño o admin
-// RETORNA: TicketDTO con status "cancelled"
+// ":tid" es el ID del ticket que se quiere cancelar.
+// El controller verifica en el service si el usuario es el dueño del ticket.
 router.patch("/:tid/cancel", authenticateJWT, cancelTicket);
 
 export default router;

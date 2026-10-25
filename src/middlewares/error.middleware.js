@@ -1,65 +1,66 @@
 // ============================================================
-// middlewares/error.middleware.js — Middleware Central de Errores
+// middlewares/error.middleware.js — Manejador central de errores
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Middlewares):
-//   Capturar TODOS los errores del sistema y retornar respuestas
-//   HTTP coherentes. Es el "último recurso" de la cadena de Express.
-//   Los controllers llaman a 'next(error)' para llegar aquí.
+// Este archivo define el "net" (red de seguridad) de la aplicación.
+// Cuando algo sale mal en cualquier parte del código y se llama
+// next(error), el pedido termina aquí y este middleware responde
+// con un mensaje de error claro.
 //
-// CONCEPTO — Middleware de errores en Express:
-//   Un middleware de errores se distingue por tener CUATRO parámetros:
-//     (err, req, res, next)
-//   Express lo identifica automáticamente por la aridad (cantidad de args).
-//   IMPORTANTE: debe registrarse ÚLTIMO en app.js con app.use(errorHandler).
+// ¿Por qué centralizar los errores en un solo lugar?
+//   Sin esto, cada controller tendría que manejar sus propios errores
+//   con su propio formato de respuesta → código repetido e inconsistente.
+//   Con este middleware, el formato de error siempre es el mismo.
 //
-// CONCEPTO — Por qué centralizar errores:
-//   Sin este middleware, cada controller haría su propio try/catch con
-//   su propia lógica de respuesta → código repetido, inconsistente.
-//   Aquí se define UNA SOLA vez qué respuesta dar a cada tipo de error.
+// ¿Cómo sabe Express que esta función es un manejador de errores?
+//   Porque tiene CUATRO parámetros: (err, req, res, _next).
+//   Un middleware normal tiene tres (req, res, next).
+//   Express detecta la cantidad de parámetros para saber cómo tratarlo.
+//   SIEMPRE tiene que registrarse el último en app.js.
 //
-// CONCEPTO JS — Object.values():
-//   'Object.values(err.errors)' retorna un array con los VALORES
-//   del objeto. Para errores de Mongoose, cada valor tiene .message.
-//   .map((e) => e.message) extrae solo el texto de cada error.
-//   .join(". ") une los strings con ". " entre ellos.
-//
-// CONCEPTO JS — El parámetro '_next':
-//   El guion bajo '_' es una convención para decir "este parámetro
-//   existe en la firma pero NO se usa en el cuerpo". Es necesario
-//   incluirlo porque Express identifica el middleware por la cantidad
-//   de parámetros (aridad 4), no por el nombre.
+// ¿Qué es el "_next"?
+//   El guion bajo es una convención para decir "este parámetro existe
+//   pero no lo necesito en el código". Lo incluimos porque si no lo
+//   ponemos, Express no reconocería esta función como manejador de errores
+//   (necesita los 4 parámetros para identificarla como tal).
 // ============================================================
 
 export const errorHandler = (err, req, res, _next) => {
-  // En desarrollo, loguear el error completo para depurar más fácil
+  // En desarrollo, mostramos el error completo en la consola para depurar.
+  // En producción no queremos mostrar detalles internos por seguridad.
   if (process.env.NODE_ENV !== "production") console.error(err);
 
-  // ── Errores de validación de Mongoose (campos required, min, enum, etc.) ──
-  // err.name === "ValidationError" → Mongoose lo lanza cuando un campo no pasa
-  // la validación del Schema (ej: un campo required que llegó vacío).
+  // ── Error de validación de Mongoose ────────────────────────
+  // Ocurre cuando un campo del modelo no cumple las reglas definidas
+  // en el Schema (por ejemplo, un campo obligatorio que llegó vacío).
   if (err.name === "ValidationError") {
+    // err.errors es un objeto con todos los campos que fallaron.
+    // Object.values() convierte ese objeto en un array de valores.
+    // .map() extrae el mensaje de error de cada campo.
+    // .join(". ") une todos los mensajes en un solo string.
     const messages = Object.values(err.errors).map((e) => e.message);
     return res.status(400).json({ status: "error", message: messages.join(". ") });
   }
 
-  // ── Errores de CastError (ObjectId inválido) ─────────────────────────────
-  // Ocurre cuando se pasa un ID que no tiene el formato de ObjectId de MongoDB
-  // (ej: /api/events/abc en lugar de /api/events/507f1f77bcf86cd799439011)
+  // ── Error de ID inválido (CastError de Mongoose) ────────────
+  // Ocurre cuando se pasa un ID que no tiene el formato correcto de MongoDB.
+  // Por ejemplo: /api/events/abc en lugar de /api/events/507f1f77bcf86cd799439011
   if (err.name === "CastError") {
     return res.status(400).json({ status: "error", message: "ID inválido" });
   }
 
-  // ── Errores de duplicados de MongoDB (unique: true) ──────────────────────
-  // MongoDB lanza código 11000 cuando se intenta insertar un valor duplicado
-  // en un campo con índice único (ej: email, reservationCode).
+  // ── Error de dato duplicado (MongoDB código 11000) ──────────
+  // Ocurre cuando se intenta guardar un valor que ya existe en un campo único.
+  // Por ejemplo: registrarse con un email que ya está en uso.
   if (err.code === 11000) {
+    // err.keyValue tiene el campo y el valor que causó el duplicado.
     const field = Object.keys(err.keyValue).join(", ");
     return res.status(409).json({ status: "error", message: `Valor duplicado: ${field}` });
   }
 
-  // ── AppError u cualquier otro error con .status explícito ────────────────
-  // Los errores creados con badRequest(), notFound(), etc. de utils/errors.js
-  // tienen un .status definido. Los errores de sistema no tienen .status → 500.
+  // ── Cualquier otro error ─────────────────────────────────────
+  // Los errores que creamos nosotros (en utils/errors.js) tienen un .status propio.
+  // Si el error no tiene .status, usamos 500 (error interno del servidor).
+  // En errores 500 no revelamos detalles al cliente por razones de seguridad.
   const status = err.status || 500;
   const message = status === 500 ? "Error interno del servidor" : err.message;
 

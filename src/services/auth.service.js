@@ -1,31 +1,21 @@
 // ============================================================
-// services/auth.service.js — Service de Autenticación
+// services/auth.service.js — Servicio de Autenticación
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Services):
-//   Contener la lógica de negocio del registro e inicio de sesión.
-//   Este service es usado por passport.config.js (estrategias register/login).
-//   Conoce las reglas de negocio (ej: no registrar emails duplicados)
-//   pero NO conoce Express (no accede a req/res).
+// Este archivo maneja las reglas para el registro de nuevos usuarios
+// y el inicio de sesión (login).
 //
-// FLUJO DE REGISTER:
-//   passport.config (register) → AuthService.register(data)
-//     → UserRepository.findByEmail() → si existe: lanza conflict
-//     → hashPassword() → UserRepository.create() → UserDTO.from()
+// ¿Qué hace este servicio?
+// 1. En el registro (register):
+//    - Comprueba que todos los datos obligatorios estén presentes.
+//    - Revisa que el email no esté ya registrado en la base de datos.
+//    - Encripta la contraseña para que nunca se guarde en texto plano.
+//    - Guarda el usuario y devuelve sus datos limpios (sin la contraseña).
 //
-// FLUJO DE LOGIN:
-//   passport.config (login) → AuthService.login(email, password)
-//     → UserRepository.findByEmail() → comparePassword()
-//     → generateToken() → retorna { user, token } al controlador
-//
-// CONCEPTO JS — try/catch:
-//   'try { ... }' ejecuta el bloque. Si cualquier línea lanza un error
-//   (throw, o una Promesa rechazada con await), la ejecución salta al
-//   bloque 'catch (error) { ... }'. Aquí relanzamos (throw error) para
-//   que el middleware de errores de Express lo capture.
-//
-// CONCEPTO JS — Encadenamiento opcional (?.):
-//   'data.email?.trim()' — si data.email es null/undefined, retorna
-//   undefined sin lanzar TypeError. El '?' cortocircuita la llamada.
+// 2. En el login (login):
+//    - Busca al usuario por su email.
+//    - Compara la contraseña que escribió el usuario con la contraseña encriptada.
+//    - Si todo coincide, genera una "llave digital" (un token JWT) para que
+//      el usuario pueda navegar de forma autenticada.
 // ============================================================
 
 import { UserRepository }              from "../repositories/user.repository.js";
@@ -39,54 +29,53 @@ export class AuthService {
     this.userRepository = new UserRepository();
   }
 
-  // ENTRADA: data — { first_name, last_name, email, password } del body del request
-  // PROCESO: valida campos, verifica duplicados, hashea password, crea usuario
-  // RETORNA: UserDTO del nuevo usuario (sin password)
-  // ERRORES: lanza badRequest si faltan campos, conflict si el email ya existe
+  // Registra un nuevo usuario en la aplicación
   async register(data) {
-    // Desestructuración: extrae propiedades del objeto 'data' en variables locales
     const { first_name, last_name, email, password } = data;
 
-    // Validación mínima: todos los campos son obligatorios
+    // Regla 1: Todos los campos son obligatorios
     if (!first_name || !last_name || !email || !password) {
       throw badRequest("Faltan campos obligatorios");
     }
 
-    // Verificar si el email ya existe en la BD (regla de negocio)
+    // Regla 2: No puede haber dos usuarios con el mismo correo
     const existingUser = await this.userRepository.findByEmail(email);
     if (existingUser) throw conflict("El email ya está registrado");
 
-    // Nunca guardar la contraseña en texto plano
+    // Regla de seguridad: Encriptamos la contraseña antes de guardarla.
+    // Nunca jamás se debe guardar una contraseña tal como la escribe el usuario.
     const hashedPassword = await hashPassword(password);
 
-    // Crear el usuario en la BD a través del repository
+    // Guardamos el nuevo usuario en la base de datos
     const newUser = await this.userRepository.create({
       first_name, last_name, email,
       password: hashedPassword,
-      role: "user"
+      role: "user" // Por defecto, cualquier persona nueva tiene el rol común de "user"
     });
 
-    // Retornar un DTO: objeto seguro sin el campo password
+    // Devolvemos los datos del usuario a través del DTO para NO mostrar su contraseña
     return UserDTO.from(newUser);
   }
 
-  // ENTRADA: email (string), password (string) — credenciales del usuario
-  // PROCESO: busca el usuario, compara password, genera JWT
-  // RETORNA: { user: { id, email, role }, token: string }
-  // ERRORES: lanza unauthorized si las credenciales no son válidas
+  // Verifica las credenciales para iniciar sesión
   async login(email, password) {
+    // 1. Buscamos si existe una cuenta con ese email
     const user = await this.userRepository.findByEmail(email);
 
-    // El mismo mensaje genérico para ambos casos evita revelar si el email existe
+    // Si el usuario no existe, rechazamos el login.
+    // Usamos el mensaje genérico "Credenciales inválidas" para no revelarle a nadie
+    // si el correo existe o no en nuestro sistema (buena práctica de seguridad).
     if (!user) throw unauthorized("Credenciales inválidas");
 
+    // 2. Comparamos la contraseña enviada con la contraseña encriptada que tenemos guardada
     const isValid = await comparePassword(password, user.password);
     if (!isValid) throw unauthorized("Credenciales inválidas");
 
-    // Retornamos los datos mínimos del usuario y el token para la cookie
+    // 3. Si todo es correcto, creamos el token JWT (la credencial digital) y devolvemos los datos
     return {
       user: { id: user._id.toString(), email: user.email, role: user.role },
-      token: generateToken(user) // JWT firmado con JWT_SECRET
+      token: generateToken(user)
     };
   }
 }
+

@@ -1,39 +1,39 @@
 // ============================================================
-// utils/errors.js — Fábrica de errores de aplicación
+// utils/errors.js — Manejo de errores de la aplicación
 // ============================================================
-// PROPÓSITO DE ESTA CAPA:
-//   Centralizar la creación de errores HTTP en un único lugar.
-//   Cualquier capa (service, middleware, etc.) puede lanzar un
-//   AppError con el código HTTP correcto sin conocer Express.
+// En la web, cada vez que algo sale mal, el servidor responde con
+// un número de estado HTTP (por ejemplo: 404 si algo no existe).
 //
-// CONCEPTO JS — Clases y herencia:
-//   'class AppError extends Error' crea una clase hija de Error.
-//   'extends' significa "hereda todo lo que tiene Error".
-//   'super(message)' llama al constructor del padre (Error) para
-//   inicializar la propiedad .message que ya incluye Error.
-//   'this.status' agrega una propiedad nueva, propia de AppError.
+// Este archivo nos permite crear errores que ya vienen con ese número
+// y con un mensaje claro en español.
+//
+// Así, en cualquier parte del código podemos escribir:
+// throw notFound("Evento no encontrado");
+// y el sistema sabrá exactamente qué código responderle al cliente.
 // ============================================================
 
-// Exportación nombrada: se importa con { AppError }
+// AppError es un error personalizado que guarda el mensaje y el código de estado HTTP
 export class AppError extends Error {
-  // 'constructor' se ejecuta automáticamente cuando se usa 'new AppError(...)'
-  // 'message' y 'status' son los parámetros que recibe la instancia nueva.
   constructor(message, status) {
-    super(message); // Inicializa Error.message con el texto recibido
-    this.status = status; // Agrega el código HTTP (400, 404, etc.) al objeto
+    super(message); // Guarda el mensaje de texto del error
+    this.status = status; // Guarda el código HTTP (400, 404, etc.)
   }
 }
 
-// ── Funciones helper ─────────────────────────────────────────
-// Arrow functions: '(msg) => new AppError(msg, 400)' es equivalente a:
-//   function badRequest(msg) { return new AppError(msg, 400); }
-// Son atajos para crear errores sin repetir el código HTTP en cada service.
-//
-// 'new AppError(msg, 400)' invoca el constructor de AppError con esos args.
-// El resultado es un objeto AppError con .message = msg y .status = 400.
+// ── Funciones rápidas para crear errores comunes ─────────────
 
-export const badRequest  = (msg) => new AppError(msg, 400); // Datos inválidos
-export const unauthorized = (msg) => new AppError(msg, 401); // No autenticado
-export const forbidden   = (msg) => new AppError(msg, 403); // Sin permisos
-export const notFound    = (msg) => new AppError(msg, 404); // Recurso no existe
-export const conflict    = (msg) => new AppError(msg, 409); // Estado incoherente
+// Error 400 (Bad Request): Los datos enviados son inválidos o faltan campos obligatorios
+export const badRequest   = (msg) => new AppError(msg, 400);
+
+// Error 401 (Unauthorized): El usuario no inició sesión o sus datos de acceso son incorrectos
+export const unauthorized = (msg) => new AppError(msg, 401);
+
+// Error 403 (Forbidden): El usuario inició sesión, pero no tiene permiso para hacer esta acción
+export const forbidden    = (msg) => new AppError(msg, 403);
+
+// Error 404 (Not Found): Lo que se buscaba (evento, usuario, entrada) no existe en el sistema
+export const notFound     = (msg) => new AppError(msg, 404);
+
+// Error 409 (Conflict): Hay un choque de datos (por ejemplo, email duplicado o cupos agotados)
+export const conflict     = (msg) => new AppError(msg, 409);
+

@@ -1,32 +1,12 @@
 // ============================================================
-// services/ticket.service.js — Service de Tickets
+// services/ticket.service.js — Servicio de Tickets (Inscripciones)
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Services):
-//   Orquestar el flujo completo de inscripción y cancelación de tickets.
-//   Este service es el más complejo: coordina EventRepository,
-//   TicketRepository, el control de cupos y el envío de emails.
-//
-// FLUJO DE CREACIÓN DE TICKET:
-//   1. Verificar que el evento existe y está publicado
-//   2. Verificar que el usuario no tiene ya un ticket activo
-//   3. Verificar que hay cupo disponible
-//   4. Crear el ticket con un UUID como código de reserva
-//   5. Enviar email de confirmación (sin bloquear la respuesta)
-//
-// CONCEPTO JS — crypto.randomUUID():
-//   Módulo nativo de Node.js para generar UUIDs v4 únicos.
-//   Ejemplo de resultado: "110e8400-e29b-41d4-a716-446655440000"
-//   Se usa como código de reserva único e irrepetible.
-//
-// CONCEPTO JS — Fire-and-forget con .catch():
-//   'sendConfirmationEmail(...).catch(() => {})' lanza el envío
-//   del email SIN esperar con 'await'. Si el email falla, el error
-//   es silenciosamente ignorado por el .catch vacío.
-//   La respuesta HTTP al usuario no espera por el email.
-//
-// CONCEPTO JS — Coalescencia nula (??):
-//   'ticket.event._id ?? ticket.event' → si ticket.event tiene _id
-//   (está populado), usa ._id; si no (es un ObjectId crudo), usa el valor directo.
+// Este archivo coordina el proceso completo de inscripción a eventos:
+// - Comprobar que el evento exista y esté disponible.
+// - Evitar que una persona se anote dos veces al mismo evento.
+// - Verificar que queden lugares disponibles (control de capacidad).
+// - Generar un código único de reserva (código alfanumérico).
+// - Guardar la entrada y enviar un email de confirmación o cancelación.
 // ============================================================
 
 import crypto             from "node:crypto";
@@ -38,37 +18,35 @@ import { badRequest, notFound, forbidden, conflict } from "../utils/errors.js";
 
 export class TicketService {
   constructor() {
-    // Este service necesita DOS repositories (para tickets y para eventos)
+    // Necesitamos acceso a los repositorios de tickets y de eventos
     this.ticketRepository = new TicketRepository();
     this.eventRepository  = new EventRepository();
   }
 
-  // ── CREAR TICKET (inscripción) ───────────────────────────────
-  // ENTRADA: eventId — req.params.eid; user — payload del JWT; data — req.body
-  // RETORNA: TicketDTO del ticket creado
+  // ── Registrar una nueva inscripción (comprar / reservar entrada) ──
   async createTicket(eventId, user, data) {
-    // 1. Verificar que el evento existe en la BD
+    // 1. Verificamos que el evento exista en la base de datos
     const event = await this.eventRepository.findById(eventId);
     if (!event) throw notFound("Evento no encontrado");
 
-    // 2. Solo se puede inscribir a eventos publicados
+    // 2. Solo se puede reservar si el evento ya está publicado
     if (event.status !== "published") throw badRequest("El evento no está disponible");
 
-    // 3. Verificar que no tiene ya un ticket activo para este evento
+    // 3. Revisamos si el usuario ya tiene una entrada activa para este evento
     const existing = await this.ticketRepository.findActiveByUserAndEvent(user.id, eventId);
     if (existing) throw conflict("Ya tenés un ticket activo para este evento");
 
-    // 4. Verificar que hay cupo suficiente
+    // 4. Verificamos si hay cupo suficiente disponible
     const quantity = Number(data.quantity);
     const occupied = await this.ticketRepository.countActiveByEvent(eventId);
     if (occupied + quantity > event.capacity) {
       throw conflict(`Cupo insuficiente. Disponibles: ${event.capacity - occupied}`);
     }
 
-    // 5. Generar UUID único como código de reserva
+    // 5. Generamos un código de reserva único e irrepetible (UUID)
     const reservationCode = crypto.randomUUID();
 
-    // 6. Persistir el ticket en la BD a través del repository
+    // 6. Guardamos el ticket en la base de datos
     const ticket = await this.ticketRepository.create({
       user: user.id,
       event: eventId,
@@ -77,36 +55,31 @@ export class TicketService {
       status: "confirmed"
     });
 
-    // 7. Enviar email de confirmación en segundo plano (fire-and-forget)
-    // No usamos 'await' → no bloqueamos la respuesta HTTP
-    // .catch(() => {}) → si falla el email, la inscripción ya está guardada
+    // 7. Enviamos el correo de confirmación en segundo plano.
+    // Usamos .catch(() => {}) para que, si por alguna razón el servidor de correos falla,
+    // el usuario no pierda su entrada y la respuesta no se quede trabada esperando.
     sendConfirmationEmail({
       to: user.email, userName: user.email,
       eventTitle: event.title, eventDate: event.date,
       eventLocation: event.location, quantity, reservationCode
     }).catch(() => {});
 
-    // 8. Retornar el DTO al Controller para la respuesta HTTP
+    // 8. Devolvemos la información del ticket formateada con el DTO
     return TicketDTO.from(ticket);
   }
 
-  // ── OBTENER MIS TICKETS ──────────────────────────────────────
-  // ENTRADA: userId — user.id del JWT (quien está autenticado)
-  // RETORNA: array de TicketDTO con el evento populado
+  // ── Ver las entradas del usuario conectado ─────────────────
   async getMyTickets(userId) {
     const tickets = await this.ticketRepository.findByUser(userId);
     return TicketDTO.fromMany(tickets);
   }
 
-  // ── OBTENER TICKETS DE UN EVENTO ─────────────────────────────
-  // ENTRADA: eventId — req.params.eid; user — payload del JWT
-  // PROCESO: verifica que el evento existe y que el user es admin o dueño
-  // RETORNA: array de TicketDTO de ese evento
+  // ── Ver las entradas vendidas para un evento ────────────────
+  // Solo el organizador del evento o un administrador pueden ver esta lista
   async getEventTickets(eventId, user) {
     const event = await this.eventRepository.findById(eventId);
     if (!event) throw notFound("Evento no encontrado");
 
-    // Solo admin o el organizador dueño pueden ver los tickets del evento
     const organizerId = (event.organizer?._id ?? event.organizer).toString();
     const isOwner = organizerId === user.id;
     if (user.role !== "admin" && !isOwner) {
@@ -117,15 +90,12 @@ export class TicketService {
     return TicketDTO.fromMany(tickets);
   }
 
-  // ── CANCELAR TICKET ──────────────────────────────────────────
-  // ENTRADA: ticketId — req.params.tid; user — payload del JWT
-  // PROCESO: verifica existencia → verifica propiedad → cancela → email
-  // RETORNA: TicketDTO del ticket cancelado
+  // ── Cancelar una entrada ───────────────────────────────────
   async cancelTicket(ticketId, user) {
     const ticket = await this.ticketRepository.findById(ticketId);
     if (!ticket) throw notFound("Ticket no encontrado");
 
-    // Solo el dueño del ticket o un admin pueden cancelarlo
+    // Solo el dueño de la entrada o un administrador pueden cancelarla
     const ownerId = (ticket.user?._id ?? ticket.user).toString();
     if (user.role !== "admin" && ownerId !== user.id) {
       throw forbidden("No tenés permisos para cancelar este ticket");
@@ -133,10 +103,10 @@ export class TicketService {
 
     if (ticket.status === "cancelled") throw badRequest("El ticket ya está cancelado");
 
-    // Cancelar a través del repository (setea status y cancelledAt)
+    // Marcamos la entrada como cancelada en la base de datos
     const cancelled = await this.ticketRepository.cancelTicket(ticketId);
 
-    // Email de cancelación también fire-and-forget
+    // Enviamos el correo de cancelación en segundo plano
     const eventId = ticket.event?._id ?? ticket.event;
     const event   = await this.eventRepository.findById(eventId);
     sendCancellationEmail({
@@ -149,3 +119,4 @@ export class TicketService {
     return TicketDTO.from(cancelled);
   }
 }
+

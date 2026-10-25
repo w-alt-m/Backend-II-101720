@@ -1,56 +1,49 @@
 // ============================================================
-// middlewares/auth.middleware.js — Middleware de Autenticación
+// middlewares/auth.middleware.js — Verificar si el usuario está logueado
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Middlewares):
-//   Verificar la identidad del usuario ANTES de que la petición
-//   llegue al Controller. Si no está autenticado, corta el flujo
-//   aquí mismo y retorna 401. Si sí, agrega req.user y llama a next().
+// Este archivo exporta una función (authenticateJWT) que actúa como
+// "portero": antes de que el pedido llegue al controller, verifica
+// si el usuario tiene una sesión activa válida.
 //
-// CONCEPTO JS — Middlewares y (req, res, next):
-//   Un middleware en Express es simplemente una función con esta firma:
-//     (req, res, next) => { ... }
-//   - 'req' (request)  → objeto con todo lo que envió el cliente
-//   - 'res' (response) → objeto para enviar la respuesta HTTP
-//   - 'next'           → función que transfiere el control al SIGUIENTE
-//                        middleware o al handler final (Controller)
-//   Si se llama 'next()' sin argumentos → continúa al siguiente paso.
-//   Si se llama 'next(error)' → salta al middleware de errores.
-//   Si NO se llama 'next()' → la petición queda "colgada" sin respuesta.
+// ¿Qué es un middleware?
+//   Es una función que se ejecuta ENTRE que llega el pedido y que
+//   llega al controller. Recibe tres parámetros:
+//     req  → todo lo que envió el cliente (cookies, body, etc.)
+//     res  → el objeto para responder al cliente
+//     next → una función que le dice a Express: "seguí al siguiente paso"
 //
-// FLUJO DE ESTA FUNCIÓN:
-//   1. Passport extrae el token de la cookie 'currentUser'
-//   2. Verifica la firma JWT con JWT_SECRET
-//   3. Si es válido → llama al callback con (null, payload)
-//   4. Si no → llama al callback con (err, false)
+//   Si llamamos next() sin argumentos → el pedido sigue su camino.
+//   Si llamamos next(error) → saltamos directamente al manejador de errores.
+//   Si no llamamos next() → el pedido queda colgado sin respuesta.
 //
-// CONCEPTO JS — Función de orden superior:
-//   passport.authenticate() retorna UNA FUNCIÓN. Por eso se llama
-//   inmediatamente con (req, res, next) al final: es un patrón de
-//   "double invocation" — la función retornada se ejecuta al instante.
+// ¿Cómo funciona la autenticación con token?
+//   Cuando el usuario inicia sesión, el servidor le da un "token" (una cadena
+//   de texto encriptada) que se guarda en una cookie del navegador.
+//   En cada pedido siguiente, el navegador envía esa cookie automáticamente.
+//   Este middleware extrae el token de la cookie y lo verifica.
 // ============================================================
 
 import passport from "passport";
 
-// 'export const' → exportación nombrada. El router importa con:
-//   import { authenticateJWT } from "../middlewares/auth.middleware.js"
-//
-// CONCEPTO: authenticateJWT es una arrow function que actúa como middleware.
-// La firma (req, res, next) es el contrato que Express espera de un middleware.
+// authenticateJWT es la función middleware que exportamos.
+// Las rutas la usan así: router.get("/ruta", authenticateJWT, controller)
+// Express la ejecuta automáticamente antes del controller.
 export const authenticateJWT = (req, res, next) => {
-  // passport.authenticate("current", ...) activa la estrategia JWT definida
-  // en passport.config.js. Retorna una función que necesita (req, res, next).
-  // El callback (err, user) es llamado por Passport con el resultado.
+  // Passport usa la estrategia "current" (definida en passport.config.js)
+  // para leer el token de la cookie y verificar si es válido.
+  // El resultado llega en el callback: si user tiene datos, el token es válido.
   passport.authenticate("current", { session: false }, (err, user) => {
-    // Si hay error o el token no es válido → respuesta 401 y fin del flujo
+    // Si hubo un error técnico O si el token no es válido (o no existe),
+    // respondemos con 401 (no autorizado) y cortamos el flujo aquí.
     if (err || !user) {
       return res.status(401).json({ status: "error", message: "No autenticado" });
     }
 
-    // Si el token es válido → adjuntar el payload del JWT a req.user
-    // Así los middlewares y controllers siguientes pueden acceder a él.
+    // El token es válido: guardamos los datos del usuario en req.user.
+    // Así el controller (y cualquier middleware siguiente) puede saber quién es.
     req.user = user;
 
-    // 'next()' sin argumentos → continuar al siguiente middleware o controller
+    // next() le dice a Express que siga al siguiente paso (el controller).
     next();
-  })(req, res, next); // ← Double invocation: ejecuta la función retornada por authenticate()
+  })(req, res, next);
 };

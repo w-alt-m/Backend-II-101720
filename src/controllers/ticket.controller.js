@@ -1,32 +1,32 @@
 // ============================================================
-// controllers/ticket.controller.js — Controller de Tickets
+// controllers/ticket.controller.js — Controller de tickets
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Controllers):
-//   Manejar las peticiones HTTP de tickets: crear, listar, cancelar.
-//   Lee datos de req y delega toda la lógica al TicketService.
+// Este archivo maneja las respuestas HTTP para las operaciones con tickets:
+// comprar uno, ver los propios, ver los de un evento o cancelar uno.
 //
-// RUTAS QUE USAN ESTE CONTROLLER:
-//   POST   /api/events/:eid/tickets       → createTicket
-//   GET    /api/events/:eid/tickets       → getEventTickets
-//   GET    /api/tickets/my-tickets        → getMyTickets
-//   PATCH  /api/tickets/:tid/cancel       → cancelTicket
+// ¿Desde qué rutas se llaman estas funciones?
+//   POST   /api/events/:eid/tickets   → createTicket (comprar ticket para un evento)
+//   GET    /api/events/:eid/tickets   → getEventTickets (tickets de un evento)
+//   GET    /api/tickets/my-tickets    → getMyTickets (mis tickets)
+//   PATCH  /api/tickets/:tid/cancel   → cancelTicket (cancelar un ticket)
 //
-// CONCEPTO — req.params.eid vs req.params.tid:
-//   Los routers definen los nombres de los parámetros dinámicos.
-//   events.router.js usa /:eid/tickets → req.params.eid = el eventId
-//   tickets.router.js usa /:tid/cancel → req.params.tid = el ticketId
-//   El controller solo lee estos parámetros; no define la URL.
+// ¿Por qué el parámetro se llama "eid" en algunas rutas y "tid" en otras?
+//   Los nombres los define el router en la URL.
+//   "eid" viene de "event id" (ID del evento).
+//   "tid" viene de "ticket id" (ID del ticket).
+//   El controller simplemente los lee con req.params.eid o req.params.tid.
 // ============================================================
 
 import { TicketService } from "../services/ticket.service.js";
 
+// Creamos el service una sola vez al cargar el archivo.
+// Así no lo creamos de nuevo en cada pedido (más eficiente).
 const ticketService = new TicketService();
 
-// POST /api/events/:eid/tickets
-// ENTRADA: req.params.eid — ObjectId del evento al que inscribirse
-//          req.user        — usuario autenticado (del JWT)
-//          req.body        — { quantity: 2 }
-// RETORNA: TicketDTO del ticket creado, status 201
+// POST /api/events/:eid/tickets — Comprar (inscribirse a) un evento
+// req.params.eid → ID del evento al que el usuario quiere inscribirse
+// req.user       → datos del usuario logueado (viene del middleware authenticateJWT)
+// req.body       → cantidad de tickets: { quantity: 2 }
 export const createTicket = async (req, res, next) => {
   try {
     const ticket = await ticketService.createTicket(req.params.eid, req.user, req.body);
@@ -36,9 +36,8 @@ export const createTicket = async (req, res, next) => {
   }
 };
 
-// GET /api/tickets/my-tickets
-// ENTRADA: req.user.id — el id del usuario autenticado
-// RETORNA: array de TicketDTO con los tickets del usuario logueado
+// GET /api/tickets/my-tickets — Ver mis propios tickets
+// req.user.id → ID del usuario logueado, para buscar solo sus tickets
 export const getMyTickets = async (req, res, next) => {
   try {
     const tickets = await ticketService.getMyTickets(req.user.id);
@@ -48,10 +47,9 @@ export const getMyTickets = async (req, res, next) => {
   }
 };
 
-// GET /api/events/:eid/tickets
-// ENTRADA: req.params.eid — ObjectId del evento
-//          req.user        — para verificar si es admin o dueño del evento en el service
-// RETORNA: array de TicketDTO del evento (solo accesible por admin u organizer dueño)
+// GET /api/events/:eid/tickets — Ver todos los tickets de un evento
+// Solo pueden hacerlo el organizador del evento o un admin.
+// req.user se pasa para que el service verifique el permiso.
 export const getEventTickets = async (req, res, next) => {
   try {
     const tickets = await ticketService.getEventTickets(req.params.eid, req.user);
@@ -61,10 +59,9 @@ export const getEventTickets = async (req, res, next) => {
   }
 };
 
-// PATCH /api/tickets/:tid/cancel
-// ENTRADA: req.params.tid — ObjectId del ticket a cancelar
-//          req.user        — para verificar si es el dueño o admin en el service
-// RETORNA: TicketDTO del ticket cancelado
+// PATCH /api/tickets/:tid/cancel — Cancelar un ticket
+// req.params.tid → ID del ticket a cancelar
+// req.user       → el service verifica que sea el dueño del ticket o un admin
 export const cancelTicket = async (req, res, next) => {
   try {
     const ticket = await ticketService.cancelTicket(req.params.tid, req.user);

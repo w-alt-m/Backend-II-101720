@@ -1,64 +1,54 @@
 // ============================================================
-// server.js — Punto de Entrada de la Aplicación
+// server.js — Archivo que arranca el servidor
 // ============================================================
-// PROPÓSITO DE ESTE ARCHIVO:
-//   Arrancar el servidor HTTP. Es el único archivo que Node.js
-//   ejecuta directamente (npm start → node src/server.js).
-//   Separa "configurar la app" (app.js) de "arrancar el servidor".
+// Este es el primer archivo que corre cuando ejecutás "npm start".
+// Su trabajo es simple: conectarse a la base de datos y luego
+// encender el servidor para que empiece a recibir pedidos.
 //
-// FLUJO DE ARRANQUE:
-//   1. Importar app (instancia configurada de Express)
-//   2. Importar connectDB (función que conecta a MongoDB)
-//   3. Llamar a startServer():
-//      a. Conectar a MongoDB (await connectDB)
-//      b. Si la conexión es exitosa → iniciar el servidor HTTP (app.listen)
-//      c. Si algo falla → loguear el error y terminar el proceso (process.exit)
-//
-// CONCEPTO JS — process.exit(1):
-//   'process.exit(1)' termina el proceso de Node.js con código de salida 1.
-//   El código 1 indica error. El código 0 indica éxito.
-//   Los orquestadores (Docker, PM2) usan este código para saber si reiniciar.
-//
-// CONCEPTO JS — Template literals:
-//   `Servidor escuchando en http://localhost:${PORT}` → el backtick ` permite
-//   insertar variables con ${} en medio de un string. Más legible que
-//   concatenación con +.
-//
-// CONCEPTO JS — Arrow function como argumento de app.listen():
-//   app.listen(PORT, () => { ... }) → el segundo argumento es un callback
-//   que Express ejecuta cuando el servidor está listo para recibir peticiones.
-//   Es una función de orden superior: app.listen recibe una función como arg.
+// ¿Por qué está separado de app.js?
+//   app.js configura CÓMO funciona la aplicación (rutas, middlewares).
+//   server.js decide CUÁNDO y en qué PUERTO empieza a funcionar.
+//   Tenerlos separados hace el código más ordenado y fácil de probar.
 // ============================================================
 
 import app       from "./app.js";
 import connectDB from "./config/database.js";
 
-// Puerto donde el servidor escuchará peticiones HTTP.
-// Primero intenta leer la variable de entorno PORT; si no existe, usa 8080.
+// El puerto es el número "puerta" por donde el servidor va a escuchar pedidos.
+// Primero miramos si hay un puerto definido en el archivo .env.
+// Si no hay ninguno definido, usamos el 8080 como valor por defecto.
 const PORT = process.env.PORT || 8080;
 
-// Función async porque necesita 'await' para esperar la conexión a MongoDB.
-// Se define y se llama inmediatamente (IIFE pattern equivalente).
+// Esta función arranca la aplicación.
+// Usamos "async" porque necesitamos esperar (await) a que la base de datos conecte.
+// Si no esperáramos, el servidor podría arrancar sin base de datos y todo fallaría.
 const startServer = async () => {
   try {
-    // 1. Conectar a MongoDB primero. Si falla → salta al catch.
+    // Paso 1: Conectar a MongoDB antes de abrir el servidor.
+    // "await" le dice a JavaScript: "esperá aquí hasta que termine esta operación".
+    // Si la conexión falla, JavaScript salta directo al bloque "catch" de abajo.
     await connectDB();
 
-    // 2. Una vez conectado, iniciar el servidor HTTP.
-    // app.listen(PORT, callback) → el callback se ejecuta cuando el servidor está listo.
+    // Paso 2: Recién después de conectar exitosamente, encendemos el servidor.
+    // app.listen(PUERTO, función) le dice a la aplicación que empiece a escuchar.
+    // La función del segundo argumento se ejecuta cuando el servidor ya está listo.
     app.listen(PORT, () => {
+      // Los backticks ` ` permiten poner variables dentro del texto con ${ }.
+      // Es igual que escribir "Servidor escuchando en http://localhost:" + PORT
       console.log(`🚀 Servidor escuchando en http://localhost:${PORT}`);
     });
   } catch (error) {
-    // Si connectDB() falla o app.listen() falla → logueamos y terminamos el proceso.
-    // No tiene sentido que el servidor siga corriendo sin BD.
+    // Si algo salió mal (por ejemplo, la base de datos no está disponible),
+    // mostramos el mensaje de error y cerramos la aplicación.
+    // No tiene sentido dejar el servidor corriendo sin base de datos.
     console.error("❌ No se pudo iniciar la aplicación:", error.message);
-    process.exit(1); // Código 1 = error → Docker/PM2 puede reiniciar el proceso
+
+    // process.exit(1) cierra Node.js con código 1, que significa "hubo un error".
+    // Herramientas de despliegue como Docker usan este número para decidir
+    // si deben intentar reiniciar el servidor automáticamente.
+    process.exit(1);
   }
 };
 
-// Llamar a la función para arrancar el servidor.
-// startServer() devuelve una Promesa. No usamos 'await' aquí porque
-// estamos en el nivel superior del módulo (top-level). En caso de error,
-// el try/catch dentro de startServer() lo maneja.
+// Acá llamamos a la función para que todo arranque.
 startServer();

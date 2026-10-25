@@ -1,72 +1,52 @@
 // ============================================================
-// repositories/user.repository.js — Repository de Usuario
+// repositories/user.repository.js — Repositorio de Usuarios
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Repositories):
-//   Actuar como intermediario entre el Service y el DAO.
-//   Traduce el lenguaje del negocio (findByEmail) al lenguaje
-//   técnico de la BD (dao.findOne({ email })).
-//   Si el DAO cambia (ej: de Mongoose a un ORM diferente), el
-//   Repository adapta la traducción sin que el Service lo note.
+// ¿Qué es un "Repository" (Repositorio)?
+// Es un intermediario entre la lógica de nuestra aplicación (Services)
+// y las consultas directas a la base de datos (DAOs).
 //
-// VENTAJA CLAVE del Repository:
-//   El Service dice "quiero el usuario por email" → no sabe NI le importa
-//   si eso se implementa con findOne({email}), una query SQL, o una caché.
-//   Ese detalle queda ENCAPSULADO aquí.
-//
-// CONCEPTO JS — constructor y 'this':
-//   'constructor()' se ejecuta cuando se hace 'new UserRepository()'.
-//   'this.dao = new UserDAO()' guarda una instancia de UserDAO en la
-//   propiedad 'dao' de ESTE objeto. 'this' siempre refiere al objeto
-//   que se está construyendo o al que llamó el método.
-//
-// CONCEPTO — export nombrado múltiple:
-//   Un mismo archivo puede tener varios 'export const' o 'export class'.
-//   Aquí exportamos la clase UserRepository Y la constante ORGANIZER_FIELDS,
-//   que otros repositories reutilizarán para hacer populate del organizador.
+// Imaginalo como el encargado de un depósito:
+// El Service le dice "buscame el usuario con este email", y el Repository
+// se encarga de pedírselo al DAO de la forma correcta.
+// Así, el Service no tiene que preocuparse por cómo está armada la base de datos.
 // ============================================================
 
 import { UserDAO } from "../dao/user.dao.js";
 
-// Campos del usuario que se incluyen cuando se popula como organizador de un evento.
-// Al centralizar esto aquí, cualquier repository que haga populate del
-// organizador usará siempre los mismos campos (evita inconsistencias).
+// Estos son los datos del usuario que queremos mostrar cuando un evento
+// muestra a su organizador. Traemos solo lo necesario (nombre, apellido,
+// email y rol) y evitamos traer información confidencial como contraseñas.
 export const ORGANIZER_FIELDS = "first_name last_name email role";
 
 export class UserRepository {
   constructor() {
-    // 'new UserDAO()' crea la instancia del DAO y la guarda en 'this.dao'
-    // A partir de aquí, this.dao tiene todos los métodos del DAO disponibles
+    // Al crear el repositorio, creamos también el DAO para poder hablar con la base de datos
     this.dao = new UserDAO();
   }
 
-  // ENTRADA: email — string con el email del usuario
-  // PROCESO: delega al DAO con un filtro { email }
-  //   Nota: '{ email }' es shorthand de '{ email: email }' — propiedad abreviada
-  // RETORNA: documento Mongoose del usuario, o null
+  // Busca un usuario por su dirección de email
   findByEmail(email) {
     return this.dao.findOne({ email });
   }
 
-  // ENTRADA: id — string con el ObjectId del usuario
-  // RETORNA: documento Mongoose del usuario, o null
+  // Busca un usuario por su ID único
   findById(id) {
     return this.dao.findById(id);
   }
 
-  // ENTRADA: data — objeto con los campos del nuevo usuario
-  // RETORNA: documento Mongoose del usuario creado
+  // Guarda un nuevo usuario en la base de datos
   create(data) {
     return this.dao.create(data);
   }
 
-  // ENTRADA: id — ObjectId; data — campos a modificar
-  // RETORNA: documento actualizado
+  // Modifica los datos de un usuario existente
   update(id, data) {
     return this.dao.update(id, data);
   }
 
-  // RETORNA: array con todos los documentos de usuario en la BD
+  // Devuelve la lista completa de todos los usuarios registrados
   findAll() {
     return this.dao.find({});
   }
 }
+

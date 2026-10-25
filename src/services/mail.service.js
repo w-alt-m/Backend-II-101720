@@ -1,34 +1,21 @@
 // ============================================================
-// services/mail.service.js — Service de Correo Electrónico
+// services/mail.service.js — Servicio para enviar correos electrónicos
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Service):
-//   Aislar todo lo relacionado a envío de emails en un lugar.
-//   Si se cambia el proveedor de email (ej: de Nodemailer a SendGrid),
-//   solo se modifica este archivo; el ticket.service no cambia.
+// Este archivo se encarga de enviar emails a los usuarios cuando
+// se inscriben a un evento o cuando cancelan su entrada.
 //
-// CONCEPTO — Por qué el mail service es llamado desde ticket.service:
-//   ticket.service envía emails DESPUÉS de crear o cancelar un ticket.
-//   El envío NO es parte del flujo principal (no bloquea la respuesta).
-//   Por eso se usa: sendConfirmationEmail(...).catch(() => {})
-//   → Si el email falla, la inscripción ya fue confirmada. El error
-//     de email se ignora silenciosamente para no afectar al usuario.
+// ¿Cómo funciona?
+// Usamos "nodemailer", una librería que le permite a Node.js conectarse
+// a un servidor de correos (como Gmail u otro servicio de email)
+// y mandar mensajes con formato HTML.
 //
-// CONCEPTO JS — Desestructuración en parámetros de función:
-//   'async ({ to, userName, eventTitle, ... })' desestructura el objeto
-//   que recibe la función directamente en la firma.
-//   Es lo mismo que: function(params) { const { to, userName } = params; }
-//   pero más compacto. Quien llama pasa un único objeto con esas props.
-//
-// CONCEPTO JS — Template literals:
-//   El backtick ` permite interpolar variables con ${variable} dentro
-//   de strings multilínea. La respuesta HTML del email se construye así.
+// Toda la configuración (usuario, contraseña del correo, etc.) se lee
+// desde las variables de entorno (.env) para mantener las contraseñas seguras.
 // ============================================================
 
 import nodemailer from "nodemailer";
 
-// El transporter se crea UNA sola vez al importar el módulo.
-// nodemailer.createTransport() configura la conexión al servidor SMTP.
-// Las credenciales vienen de variables de entorno (.env) por seguridad.
+// Configuramos la conexión con el servidor de correo electrónico
 const transporter = nodemailer.createTransport({
   host: process.env.MAIL_HOST,
   port: Number(process.env.MAIL_PORT) || 587,
@@ -38,13 +25,8 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// ENTRADA: objeto con { to, userName, eventTitle, eventDate, eventLocation, quantity, reservationCode }
-//          Desestructurado directamente en la firma de la función.
-// PROCESO: construye el HTML del email y lo envía via SMTP
-// RETORNA: Promesa que resuelve cuando el email fue enviado (o rechaza si hay error SMTP)
+// Envía un email al usuario confirmando que su inscripción al evento fue exitosa
 export const sendConfirmationEmail = async ({ to, userName, eventTitle, eventDate, eventLocation, quantity, reservationCode }) => {
-  // Template literal (backtick) para el HTML del email
-  // ${variable} interpola el valor de la variable en el string
   return transporter.sendMail({
     from:    process.env.MAIL_FROM || process.env.MAIL_USER,
     to,
@@ -63,9 +45,7 @@ export const sendConfirmationEmail = async ({ to, userName, eventTitle, eventDat
   });
 };
 
-// ENTRADA: mismos datos que sendConfirmationEmail
-// PROCESO: construye el HTML de cancelación y lo envía
-// RETORNA: Promesa del envío (puede ser ignorada con .catch(() => {}) en el service)
+// Envía un email al usuario notificándole que su entrada fue cancelada
 export const sendCancellationEmail = async ({ to, userName, eventTitle, eventDate, eventLocation, quantity, reservationCode }) => {
   return transporter.sendMail({
     from:    process.env.MAIL_FROM || process.env.MAIL_USER,
@@ -84,3 +64,4 @@ export const sendCancellationEmail = async ({ to, userName, eventTitle, eventDat
     `
   });
 };
+

@@ -1,65 +1,50 @@
 // ============================================================
-// dao/user.dao.js — Data Access Object de Usuario
+// dao/user.dao.js — Hablar con la base de datos (usuarios)
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (DAOs):
-//   Ser el ÚNICO punto de contacto con el modelo Mongoose.
-//   Ninguna otra capa (service, repository) llama directamente a
-//   User.find(), User.create(), etc. Todo pasa por aquí.
-//   Esto permite cambiar MongoDB por otra BD simplemente reescribiendo
-//   este archivo, sin tocar nada más.
+// DAO significa "Data Access Object" (objeto de acceso a datos).
+// Es la única capa del proyecto que habla directamente con MongoDB.
+// Ninguna otra parte del código llama User.find() o User.create() directamente:
+// todo pasa por acá.
 //
-// CONCEPTO JS — Clases:
-//   'class UserDAO' agrupa métodos relacionados en un objeto reutilizable.
-//   No tiene 'constructor' porque no necesita estado inicial; todos sus
-//   métodos son sin estado (stateless) y trabajan directamente con el Model.
+// ¿Por qué separar el acceso a la base de datos en una capa propia?
+//   Si el día de mañana cambiamos MongoDB por otra base de datos,
+//   solo tendríamos que reescribir este archivo. El resto del proyecto
+//   (services, repositories) no necesitaría cambiar nada.
 //
-// CONCEPTO JS — async/await en métodos de clase:
-//   'async findById(id)' declara el método como asíncrono.
-//   Dentro, 'return User.findById(id)' retorna la Promesa que devuelve
-//   Mongoose. El llamador (Repository) puede hacer 'await dao.findById(id)'
-//   para esperar el resultado.
-//
-// FLUJO DE DATOS:
-//   Repository → llama al método del DAO con un argumento
-//   DAO        → delega al Modelo Mongoose (toca la BD)
-//   DAO        → retorna el documento Mongoose (o null) hacia el Repository
+// ¿Qué son estos métodos?
+//   Cada método hace una operación específica en la base de datos.
+//   Todos son "async" porque las operaciones de base de datos tardan
+//   un momento y necesitamos esperar el resultado con "await".
 // ============================================================
 
-// 'import User from ...' importa el Modelo Mongoose (export default del model)
 import User from "../models/user.model.js";
 
-// 'export class' combina 'export' y 'class': exportación nombrada de la clase.
-// El repository importará: import { UserDAO } from "../dao/user.dao.js"
 export class UserDAO {
-  // ENTRADA: id — string con el ObjectId del usuario
-  // DELEGA A: User.findById(id) — método del Modelo Mongoose
-  // RETORNA:  documento Mongoose del usuario, o null si no existe
+  // Busca un usuario por su ID (el _id que MongoDB asigna automáticamente)
   async findById(id) {
     return User.findById(id);
   }
 
-  // ENTRADA: filter — objeto con criterios de búsqueda, ej: { email: "a@b.com" }
-  // RETORNA: primer documento que coincide, o null
+  // Busca el primer usuario que coincida con el filtro.
+  // Ejemplo: findOne({ email: "ana@test.com" }) → encuentra al usuario con ese email
   async findOne(filter) {
     return User.findOne(filter);
   }
 
-  // ENTRADA: data — objeto con los campos del nuevo usuario
-  // RETORNA: el documento Mongoose recién creado y guardado en la BD
+  // Crea un usuario nuevo en la base de datos y lo guarda.
+  // Retorna el documento del usuario recién creado.
   async create(data) {
     return User.create(data);
   }
 
-  // ENTRADA: id — ObjectId del usuario a actualizar
-  //          data — campos a modificar (solo los que se pasan)
-  // RETORNA: el documento ACTUALIZADO (opción 'new: true')
+  // Actualiza un usuario por su ID.
+  // new: true → retorna el usuario CON los cambios ya aplicados (no el original).
   async update(id, data) {
-    // 'new: true' → devuelve el documento DESPUÉS de la actualización
     return User.findByIdAndUpdate(id, data, { new: true });
   }
 
-  // ENTRADA: filter — objeto de filtro (por defecto {} = todos)
-  // RETORNA: array de documentos Mongoose que coinciden
+  // Trae todos los usuarios de la base de datos.
+  // filter = {} significa "sin filtros" → devuelve todos.
   async find(filter = {}) {
     return User.find(filter);
   }

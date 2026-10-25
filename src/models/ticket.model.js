@@ -1,31 +1,32 @@
 // ============================================================
-// models/ticket.model.js — Esquema y Modelo de Ticket (Mongoose)
+// models/ticket.model.js — Definir cómo se guarda un ticket en la BD
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Models):
-//   Definir la estructura del documento "ticket" en MongoDB.
-//   Un ticket representa la inscripción de un usuario a un evento.
-//   Relaciona (por referencia) un User con un Event.
+// Un ticket representa que un usuario se inscribió a un evento.
+// Tiene referencias tanto al usuario como al evento (solo sus IDs).
 //
-// CONCEPTO — Múltiples referencias:
-//   Este modelo tiene DOS campos de tipo ObjectId que apuntan a
-//   colecciones distintas: 'user' → colección users, 'event' → colección events.
-//   Es una relación muchos-a-muchos implementada con una colección intermedia
-//   (igual que una tabla de unión en SQL).
+// ¿Por qué tiene referencias a User y a Event?
+//   Un ticket pertenece a UN usuario y a UN evento.
+//   En vez de copiar todos los datos del usuario y del evento dentro
+//   del ticket, guardamos solo sus IDs. Así no duplicamos información.
+//   Cuando necesitamos los datos completos, usamos populate().
 //
-// CONCEPTO — Índice compuesto:
-//   ticketSchema.index({ user: 1, event: 1 }) crea un índice sobre el
-//   par (user, event). Esto acelera la consulta "¿tiene este usuario
-//   un ticket para este evento?" que se hace en cada nueva inscripción.
+//   Esto es parecido a una "tabla intermedia" en SQL que conecta
+//   dos tablas: en este caso, usuarios con eventos.
+//
+// ¿Qué es el índice compuesto?
+//   Creamos un índice sobre los dos campos (user + event) juntos.
+//   Esto hace más rápida la consulta "¿tiene este usuario un ticket
+//   para este evento?" que se ejecuta antes de cada nueva inscripción.
 // ============================================================
 
 import mongoose from "mongoose";
 
 const ticketSchema = new mongoose.Schema(
   {
-    // Referencia al usuario que se inscribió
+    // ID del usuario que se inscribió al evento
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
-    // Referencia al evento al que se inscribió
+    // ID del evento al que se inscribió
     event: { type: mongoose.Schema.Types.ObjectId, ref: "Event", required: true },
 
     status: {
@@ -34,18 +35,19 @@ const ticketSchema = new mongoose.Schema(
       default: "confirmed"
     },
 
-    quantity:        { type: Number, required: true, min: 1 },
+    quantity: { type: Number, required: true, min: 1 },
 
-    // UUID único generado en el service para identificar la reserva
+    // Código único que identifica esta reserva. Se genera automáticamente en el service.
+    // unique: true garantiza que no haya dos tickets con el mismo código.
     reservationCode: { type: String, required: true, unique: true },
 
-    // null hasta que se cancele el ticket
-    cancelledAt:     { type: Date, default: null }
+    // Fecha en que se canceló el ticket. Null mientras el ticket esté activo.
+    cancelledAt: { type: Date, default: null }
   },
   { timestamps: true }
 );
 
-// Índice compuesto: acelera la búsqueda "¿tiene este user un ticket activo en este event?"
+// Índice compuesto: accelera la búsqueda "¿tiene este user un ticket activo en este event?"
 ticketSchema.index({ user: 1, event: 1 });
 
 export default mongoose.model("Ticket", ticketSchema);

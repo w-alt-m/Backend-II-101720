@@ -1,34 +1,26 @@
 // ============================================================
-// repositories/ticket.repository.js — Repository de Ticket
+// repositories/ticket.repository.js — Repositorio de Tickets
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Repositories):
-//   Centralizar las operaciones de acceso a datos para tickets.
-//   Gestiona la configuración de populate para user y event,
-//   y ofrece métodos de negocio (cancelTicket, findByUser, etc.)
-//   que el Service puede usar sin conocer detalles de Mongoose.
+// Este archivo organiza el acceso a los datos de las entradas (tickets).
 //
-// CONCEPTO JS — Arrays de configuración:
-//   TICKET_POPULATES es un array de objetos. Cada objeto configura
-//   un populate distinto. Centralizar aquí evita que el Service
-//   sepa qué campos poblar; ese es el trabajo del Repository.
+// Un ticket relaciona a dos elementos principales:
+// 1. El usuario que compró o reservó la entrada.
+// 2. El evento al que asistirá.
 //
-// CONCEPTO — Método de negocio en el Repository:
-//   'cancelTicket(id)' NO es solo "actualiza este documento";
-//   sabe que cancelar = { status: "cancelled", cancelledAt: new Date() }.
-//   Esta regla pertenece al modelo de datos, no a la lógica de negocio
-//   compleja (que viviría en el Service). Es un buen límite de responsabilidad.
+// Este repositorio se asegura de traer la información de ambos elementos
+// de forma automática y ofrece operaciones comunes como consultar las entradas
+// de un usuario o cancelar un ticket.
 // ============================================================
 
 import { TicketDAO } from "../dao/ticket.dao.js";
 
-// Campos a traer cuando se popula el usuario en un ticket
+// Qué campos nos interesan del usuario que reservó
 const USER_FIELDS  = "first_name last_name email";
 
-// Campos a traer cuando se popula el evento en un ticket
+// Qué campos nos interesan del evento al que va a asistir
 const EVENT_FIELDS = "title date location capacity status";
 
-// Configuración de populate para AMBAS referencias del ticket.
-// El DAO acepta un array de populates y los aplica secuencialmente.
+// Lista de datos relacionados que queremos completar automáticamente en cada ticket
 const TICKET_POPULATES = [
   { path: "user",  select: USER_FIELDS  },
   { path: "event", select: EVENT_FIELDS }
@@ -39,18 +31,14 @@ export class TicketRepository {
     this.dao = new TicketDAO();
   }
 
-  // ENTRADA: data — { user, event, quantity, reservationCode, status }
-  // PROCESO: crea el ticket; lo popula con user y event
-  // RETORNA: documento Mongoose con user y event populados
+  // Crea un nuevo ticket y le adjunta los datos del usuario y del evento
   async create(data) {
     const ticket = await this.dao.create(data);
-    // Populamos secuencialmente usando for...of (await dentro del loop)
     for (const p of TICKET_POPULATES) await ticket.populate(p);
     return ticket;
   }
 
-  // ENTRADA: id — ObjectId del ticket
-  // RETORNA: documento con user y event populados, o null
+  // Busca un ticket por su ID y completa los datos del usuario y del evento
   async findById(id) {
     const ticket = await this.dao.findById(id);
     if (!ticket) return null;
@@ -58,8 +46,7 @@ export class TicketRepository {
     return ticket;
   }
 
-  // ENTRADA: userId — ObjectId del usuario
-  // RETORNA: array de tickets del usuario con el evento populado
+  // Busca todas las entradas que compró un usuario específico (ordenadas de más reciente a más antigua)
   findByUser(userId) {
     return this.dao.find(
       { user: userId },
@@ -67,8 +54,7 @@ export class TicketRepository {
     );
   }
 
-  // ENTRADA: eventId — ObjectId del evento
-  // RETORNA: array de tickets del evento con el usuario populado
+  // Busca todas las entradas vendidas para un evento específico
   findByEvent(eventId) {
     return this.dao.find(
       { event: eventId },
@@ -76,25 +62,22 @@ export class TicketRepository {
     );
   }
 
-  // ENTRADA: userId, eventId — ObjectIds como string
-  // RETORNA: ticket activo si existe, o null (para evitar duplicados)
+  // Busca si un usuario ya tiene una entrada confirmada o pendiente para un evento
+  // Sirve para no permitir que la misma persona reserve dos veces el mismo evento
   findActiveByUserAndEvent(userId, eventId) {
     return this.dao.findOne({
       user: userId,
       event: eventId,
-      // $in es un operador de MongoDB: status debe ser uno de estos valores
       status: { $in: ["confirmed", "pending"] }
     });
   }
 
-  // ENTRADA: eventId — string del ObjectId
-  // RETORNA: número entero con los cupos actualmente ocupados
+  // Cuenta cuántos lugares están ocupados actualmente en un evento
   countActiveByEvent(eventId) {
     return this.dao.countActiveByEvent(eventId);
   }
 
-  // ENTRADA: id — ObjectId del ticket; data — campos a actualizar
-  // RETORNA: documento actualizado con user y event populados, o null
+  // Actualiza los datos de un ticket por su ID
   async updateById(id, data) {
     const ticket = await this.dao.update(id, data);
     if (!ticket) return null;
@@ -102,11 +85,9 @@ export class TicketRepository {
     return ticket;
   }
 
-  // ENTRADA: id — ObjectId del ticket
-  // PROCESO: actualiza status a "cancelled" y registra la fecha de cancelación
-  // RETORNA: documento cancelado con user y event populados
-  // NOTA: esta lógica (qué significa "cancelar") vive aquí, no en el Service
+  // Cancela un ticket marcándolo como "cancelled" y guardando la fecha actual de cancelación
   cancelTicket(id) {
     return this.updateById(id, { status: "cancelled", cancelledAt: new Date() });
   }
 }
+

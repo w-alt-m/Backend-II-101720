@@ -1,58 +1,59 @@
 // ============================================================
-// controllers/sessions.controller.js — Controller de Sesiones
+// controllers/sessions.controller.js — Registro, login y logout
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Controllers):
-//   Manejar las respuestas HTTP para registro, login, current y logout.
-//   Nota especial: en este proyecto, la lógica de autenticación vive
-//   en passport.config.js (estrategias register/login/current).
-//   El router de sesiones ejecuta Passport ANTES de llegar al controller,
-//   así que cuando el controller se ejecuta, req.user ya está listo.
+// Este archivo maneja las respuestas para las rutas de autenticación.
 //
-// FLUJO COMPLETO DE LOGIN:
-//   1. Cliente envía POST /api/sessions/login con { email, password }
-//   2. El router ejecuta passport.authenticate("login", ...)
-//   3. Passport llama a la estrategia "login" de passport.config.js
-//   4. Si las credenciales son válidas → req.user = { id, email, role, token }
-//   5. El router llama next() → llega a este controller
-//   6. El controller lee req.user.token y lo guarda en una cookie HTTP-only
+// ¿Qué hace el controller?
+//   El controller es el "último paso" de un pedido HTTP.
+//   Recibe los datos ya procesados, hace lo que tiene que hacer
+//   y envía la respuesta final al cliente.
 //
-// CONCEPTO — Cookie HTTP-only:
-//   Una cookie con httpOnly:true NO puede ser leída por JavaScript del browser.
-//   Esto previene ataques XSS (Cross-Site Scripting) donde código malicioso
-//   intentaría robar el token de localStorage.
-//   El browser la envía automáticamente en cada petición al mismo dominio.
+// Un detalle importante de este proyecto:
+//   La lógica pesada de autenticación (verificar contraseña, crear
+//   token, etc.) no está en este controller: está en passport.config.js.
+//   Passport corre ANTES de que el pedido llegue acá.
+//   Cuando este controller se ejecuta, req.user ya tiene el usuario listo.
+//
+// ¿Qué es una cookie httpOnly?
+//   Una cookie es una pequeña información que el servidor le guarda al
+//   navegador. Con httpOnly:true, JavaScript del navegador no puede
+//   leerla ni robarla. El navegador la envía solo al servidor en cada pedido.
+//   Así guardamos el token de forma segura sin que sea accesible desde
+//   el front-end (lo que protege contra ciertos tipos de ataques).
 // ============================================================
 
 import { UserDTO } from "../dto/user.dto.js";
 
-// ENTRADA: req.user — objeto con los datos del usuario registrado
-//          (lo puso passport.authenticate("register", ...) en el router)
-// PROCESO: convierte el usuario a DTO y responde 201
-// RETORNA: respuesta JSON con el UserDTO (sin password)
+// POST /api/sessions/register
+// Cuando llegamos acá, Passport ya verificó que el email no existía
+// y creó el usuario. req.user tiene los datos del usuario nuevo.
+// Respondemos con el usuario creado (usando UserDTO para no devolver la contraseña).
 export const register = (req, res) => {
   res.status(201).json({ status: "success", payload: UserDTO.from(req.user) });
 };
 
-// ENTRADA: req.user.token — JWT generado por passport.config.js estrategia "login"
-// PROCESO: guarda el token en una cookie HTTP-only y responde 200
-// RETORNA: respuesta JSON confirmando el login (el token viaja en la cookie, no en el body)
+// POST /api/sessions/login
+// Cuando llegamos acá, Passport ya verificó email y contraseña.
+// req.user.token tiene el token de sesión que Passport generó.
+// Lo guardamos en una cookie del navegador y respondemos con éxito.
 export const login = (req, res) => {
   const token = req.user.token;
 
-  // res.cookie(nombre, valor, opciones) → crea una cookie en el browser
+  // res.cookie(nombre, valor, opciones) le dice al navegador que guarde esta cookie.
   res.cookie("currentUser", token, {
-    httpOnly: true,                                        // No accesible por JS del browser
-    sameSite: "lax",                                       // Protección contra CSRF
-    maxAge:   3600000,                                     // Duración: 1 hora en milisegundos
-    secure:   process.env.NODE_ENV === "production"        // Solo HTTPS en producción
+    httpOnly: true,   // JavaScript del navegador NO puede leer esta cookie (más seguro)
+    sameSite: "lax",  // Protección básica: la cookie solo se envía desde el mismo sitio
+    maxAge:   3600000, // La cookie dura 1 hora (3.600.000 milisegundos = 60 min × 60 seg × 1000)
+    secure:   process.env.NODE_ENV === "production" // En producción, solo por HTTPS
   });
 
   res.status(200).json({ status: "success", message: "Login correcto" });
 };
 
-// ENTRADA: req.user — payload del JWT verificado por passport.authenticate("current")
-// PROCESO: extrae id, email, role del payload y los devuelve al cliente
-// RETORNA: respuesta JSON con los datos básicos del usuario autenticado
+// GET /api/sessions/current
+// Cuando llegamos acá, Passport ya verificó el token de la cookie.
+// req.user tiene los datos básicos del usuario logueado.
+// Respondemos con su ID, email y rol.
 export const current = (req, res) => {
   res.status(200).json({
     status: "success",
@@ -60,11 +61,11 @@ export const current = (req, res) => {
   });
 };
 
-// ENTRADA: (ninguna relevante del request)
-// PROCESO: elimina la cookie 'currentUser' del browser
-// RETORNA: respuesta JSON confirmando el logout
+// POST /api/sessions/logout
+// Para cerrar sesión, simplemente le decimos al navegador que borre la cookie.
+// La próxima vez que el usuario haga un pedido, no tendrá token → no estará logueado.
 export const logout = (req, res) => {
-  // res.clearCookie() envía al browser la instrucción de borrar la cookie
+  // res.clearCookie() envía al navegador la instrucción de borrar esa cookie.
   res.clearCookie("currentUser");
   res.status(200).json({ status: "success", message: "Sesión cerrada" });
 };

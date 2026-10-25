@@ -1,42 +1,41 @@
 // ============================================================
-// config/database.js — Conexión a MongoDB
+// config/database.js — Conectar la aplicación a MongoDB
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Config):
-//   Centralizar la configuración de la conexión a la base de datos.
-//   Se llama UNA sola vez en server.js al arrancar la aplicación.
-//   Si falla, el servidor no arranca (error propagado al catch de server.js).
+// Este archivo define cómo conectarse a la base de datos.
+// Es llamado una sola vez cuando el servidor arranca (en server.js).
+// Si la conexión falla, el servidor se detiene (no tiene sentido
+// seguir sin base de datos).
 //
-// CONCEPTO JS — export default de función:
-//   'export default connectDB' exporta la función.
-//   En server.js se importa: import connectDB from "./config/database.js"
-//   Se puede nombrar como se quiera al importar porque es un default export.
+// ¿Qué es MongoDB y Mongoose?
+//   MongoDB es una base de datos que guarda los datos en documentos
+//   (parecidos a objetos de JavaScript) en lugar de tablas como SQL.
+//   Mongoose es una librería que nos ayuda a trabajar con MongoDB
+//   desde Node.js de forma más sencilla y organizada.
 //
-// CONCEPTO JS — async/await en la conexión:
-//   'await mongoose.connect()' espera a que la conexión TCP con MongoDB
-//   se establezca completamente. Si falla (URI inválida, BD no disponible),
-//   mongoose.connect() rechaza su Promesa → el error se propaga al llamador.
-//
-// CONCEPTO — Variables de entorno:
-//   process.env.MONGO_URL lee la variable del archivo .env (cargado por dotenv).
-//   Nunca se hardcodea la URL de la BD directamente en el código; eso sería
-//   un riesgo de seguridad y haría el código no portable entre entornos.
+// ¿Qué es una variable de entorno?
+//   Es una variable que vive fuera del código, en un archivo llamado .env.
+//   Ahí guardamos información sensible como la URL de la base de datos
+//   o contraseñas. De esta forma el código no expone esa información.
 // ============================================================
 
 import mongoose from "mongoose";
 
-// ENTRADA: (ninguna — lee process.env.MONGO_URL)
-// PROCESO: conecta Mongoose a MongoDB usando la URI del .env
-// RETORNA: Promesa que resuelve cuando la conexión está lista
-// ERROR:   rechaza la Promesa si la URI falta o MongoDB no responde
+// Esta función conecta la aplicación a MongoDB.
+// Es "async" porque la conexión tarda un momento y necesitamos esperarla.
 const connectDB = async () => {
+  // Verificamos que la URL de la base de datos esté configurada en el .env.
+  // process.env.MONGO_URL lee esa variable del archivo .env.
   if (!process.env.MONGO_URL) {
-    // Lanzar aquí interrumpe la promesa → server.js lo captura y aborta el inicio
+    // Si no está configurada, lanzamos un error que detiene el servidor.
+    // Es mejor fallar rápido y explicar el problema que intentar seguir.
     throw new Error("Falta MONGO_URL en el archivo .env");
   }
 
-  // mongoose.connect() establece la conexión y configura el pool de conexiones
+  // mongoose.connect() abre la conexión con la base de datos.
+  // "await" espera a que la conexión esté lista antes de continuar.
   await mongoose.connect(process.env.MONGO_URL);
   console.log("✅ MongoDB conectado");
 };
 
+// Exportamos la función para que server.js pueda llamarla al arrancar.
 export default connectDB;

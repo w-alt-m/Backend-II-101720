@@ -1,35 +1,25 @@
 // ============================================================
-// dto/ticket.dto.js — Data Transfer Object de Ticket
+// dto/ticket.dto.js — Filtrar los datos del ticket antes de responder
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (DTOs):
-//   Transformar el documento Mongoose de un ticket antes de enviarlo
-//   al cliente. El ticket referencia tanto a un User como a un Event;
-//   ambos pueden estar populados o no. El DTO aplica UserDTO/EventDTO
-//   según corresponda para limpiar datos sensibles de cada sub-documento.
+// Este DTO funciona igual que los otros DTOs, pero para tickets.
+// Un ticket tiene referencias tanto a un usuario como a un evento,
+// así que puede necesitar aplicar UserDTO y EventDTO internamente.
 //
-// CONCEPTO — Composición de DTOs:
-//   TicketDTO no "hereda" de UserDTO ni de EventDTO (no usa extends).
-//   En cambio, los USA internamente: les delega la transformación de sus
-//   sub-partes. Esto se llama "composición" en POO y es preferible a la
-//   herencia cuando los objetos son conceptualmente distintos.
-//
-// CONCEPTO JS — Desestructuración (recordatorio del patrón):
-//   En los métodos estáticos usamos arrow functions en .map().
-//   '(t) => new TicketDTO(t)' es lo mismo que:
-//     function(t) { return new TicketDTO(t); }
-//   Las arrow functions no tienen su propio 'this', lo heredan del
-//   contexto donde fueron definidas (a diferencia de las funciones normales).
+// ¿Por qué un DTO usa otros DTOs?
+//   Cuando un ticket tiene los datos completos del usuario y del evento
+//   (porque los pedimos con populate), necesitamos filtrar esos datos también.
+//   UserDTO se asegura de que el password del usuario no llegue al cliente.
+//   EventDTO se asegura de que los datos del evento estén bien formateados.
+//   TicketDTO "delega" esa responsabilidad a cada DTO especializado.
+//   Esto se llama "composición": un objeto usa a otros para hacer su trabajo.
 // ============================================================
 
 import { UserDTO  } from "./user.dto.js";
 import { EventDTO } from "./event.dto.js";
 
 export class TicketDTO {
-  // ENTRADA: ticket — documento Mongoose de un ticket
-  //          (con user y event posiblemente populados)
-  // PROCESO: copia campos; delega la transformación de user y event a sus DTOs
-  // SALIDA:  instancia de TicketDTO lista para la respuesta HTTP
   constructor(ticket) {
+    // Convertimos el documento de Mongoose a objeto JS simple si es necesario.
     const data = ticket.toObject ? ticket.toObject() : ticket;
 
     this.id              = data._id;
@@ -39,15 +29,16 @@ export class TicketDTO {
     this.cancelledAt     = data.cancelledAt;
     this.createdAt       = data.createdAt;
 
-    // Si 'user' está populado (es un objeto con _id), aplicamos UserDTO
-    // para asegurarnos de que nunca se filtre el password del usuario.
+    // Si "user" es un objeto completo (tiene _id), lo filtramos con UserDTO
+    // para garantizar que la contraseña del usuario no llegue al cliente.
+    // Si solo es el ID, lo dejamos tal cual.
     if (data.user && typeof data.user === "object" && data.user._id) {
       this.user = UserDTO.from(data.user);
     } else {
-      this.user = data.user; // solo el ObjectId crudo
+      this.user = data.user;
     }
 
-    // Si 'event' está populado, aplicamos EventDTO
+    // Lo mismo para "event": si está completo lo filtramos con EventDTO.
     if (data.event && typeof data.event === "object" && data.event._id) {
       this.event = EventDTO.from(data.event);
     } else {
@@ -55,10 +46,12 @@ export class TicketDTO {
     }
   }
 
+  // Crea un TicketDTO de un solo ticket
   static from(ticket) {
     return new TicketDTO(ticket);
   }
 
+  // Crea TicketDTOs de una lista de tickets
   static fromMany(tickets) {
     return tickets.map((t) => new TicketDTO(t));
   }

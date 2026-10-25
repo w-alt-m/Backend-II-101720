@@ -1,25 +1,22 @@
 // ============================================================
-// routes/sessions.router.js — Router de Sesiones (Auth)
+// routes/sessions.router.js — Rutas de autenticación
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Routes):
-//   Definir las rutas de autenticación y aplicar Passport como
-//   middleware ANTES de que el request llegue al controller.
+// Este archivo define las rutas para registrarse, iniciar sesión,
+// ver quién está logueado y cerrar sesión.
 //
-// PATRÓN — Passport como middleware en la ruta:
-//   En lugar de usar passport.authenticate() como middleware simple,
-//   usamos el "callback personalizado" para tener control total
-//   sobre la respuesta de error. Esto se llama "Custom Callback Pattern".
+// ¿Qué hace Passport acá?
+//   Passport es una librería que nos ayuda a verificar usuarios.
+//   Antes de ejecutar cada controller, Passport revisa si el
+//   usuario existe, si la contraseña es correcta, etc.
+//   Si todo está bien, guarda el usuario en req.user para que
+//   el controller lo pueda usar.
 //
-// CONCEPTO JS — Callback y double invocation:
-//   passport.authenticate("login", { session: false }, (err, user) => {...})
-//   retorna UNA FUNCIÓN. Esa función se llama inmediatamente con (req, res, next).
-//   El callback (err, user) se invoca internamente por Passport cuando termina.
-//
-// CONCEPTO JS — Funciones anónimas vs nombradas:
-//   '(req, res, next) => { ... }' es una función ANÓNIMA (sin nombre).
-//   Se pasa directamente como argumento a router.post().
-//   En los logs de error, aparece como "anonymous function" — eso es
-//   un tradeoff de las arrow functions usadas inline.
+// ¿Por qué la función tiene esa forma rara con )(req, res, next) al final?
+//   passport.authenticate(...) NO es un middleware directamente.
+//   Es una función que CREA un middleware y lo devuelve.
+//   Para ejecutarlo, necesitamos llamarlo con (req, res, next).
+//   Es como recibir una función de una función y ejecutarla enseguida.
+//   Ejemplo simple: hacer(() => hacerAlgo())(argumentos)
 // ============================================================
 
 import { Router }   from "express";
@@ -28,40 +25,53 @@ import { register, login, current, logout } from "../controllers/sessions.contro
 
 const router = Router();
 
-// POST /api/sessions/register
-// FLUJO: passport.authenticate("register") → si OK: req.user = nuevo usuario → register()
+// POST /api/sessions/register — Crear una cuenta nueva
+// Primero Passport verifica que el email no exista y crea el usuario.
+// Si todo sale bien, req.user tendrá el nuevo usuario y pasamos al controller.
 router.post("/register", (req, res, next) => {
   passport.authenticate("register", { session: false }, (err, user, info) => {
-    if (err) return next(err); // Error técnico → middleware de errores
+    // Si hubo un error inesperado (problema de base de datos, etc.),
+    // lo pasamos al manejador de errores con next(err).
+    if (err) return next(err);
 
-    // 'info' contiene el mensaje de la estrategia cuando retorna done(null, false, info)
+    // Si "user" es falso, significa que el registro no pudo completarse.
+    // "info" contiene el mensaje explicando por qué (ej: "el email ya existe").
+    // info?.message usa "?." para evitar un error si info fuera undefined.
     if (!user) {
       return res.status(400).json({ status: "error", message: info?.message || "Error en el registro" });
     }
 
-    req.user = user; // Disponible para el controller 'register'
-    next();          // Pasa al controller
-  })(req, res, next); // Double invocation
+    // Guardamos el usuario en req.user para que el controller "register" lo use.
+    req.user = user;
+
+    // next() sin argumentos pasa el control al siguiente paso (el controller).
+    next();
+  })(req, res, next);
 }, register);
 
-// POST /api/sessions/login
-// FLUJO: passport.authenticate("login") → verifica credenciales → si OK: req.user con token
+// POST /api/sessions/login — Iniciar sesión
+// Passport verifica el email y la contraseña.
+// Si las credenciales son correctas, req.user tendrá los datos del usuario y su token.
 router.post("/login", (req, res, next) => {
   passport.authenticate("login", { session: false }, (err, user) => {
     if (err) return next(err);
 
-    // Si user es false → credenciales inválidas
+    // Si user es false, las credenciales son incorrectas.
+    // Respondemos con 401 (no autorizado).
     if (!user) return res.status(401).json({ status: "error", message: "Credenciales inválidas" });
 
-    req.user = user; // user contiene { id, email, role, token }
+    // user contiene: { id, email, role, token }
+    req.user = user;
     next();
   })(req, res, next);
 }, login);
 
-// GET /api/sessions/current
-// FLUJO: passport.authenticate("current") → verifica el JWT de la cookie → si OK: req.user
+// GET /api/sessions/current — Ver quién está logueado ahora
+// Passport revisa la cookie del navegador para ver si hay un token válido.
+// Si hay un token válido, req.user tendrá los datos del usuario logueado.
 router.get("/current", (req, res, next) => {
   passport.authenticate("current", { session: false }, (err, user) => {
+    // Si hay error O el token no es válido, respondemos con 401.
     if (err || !user) return res.status(401).json({ status: "error", message: "No autenticado" });
 
     req.user = user;
@@ -69,8 +79,8 @@ router.get("/current", (req, res, next) => {
   })(req, res, next);
 }, current);
 
-// POST /api/sessions/logout
-// No necesita Passport: simplemente limpia la cookie del browser
+// POST /api/sessions/logout — Cerrar sesión
+// Esta ruta no necesita Passport: simplemente borra la cookie del navegador.
 router.post("/logout", logout);
 
 export default router;

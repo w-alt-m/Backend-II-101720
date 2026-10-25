@@ -1,22 +1,21 @@
 // ============================================================
-// models/event.model.js — Esquema y Modelo de Evento (Mongoose)
+// models/event.model.js — Definir cómo se guarda un evento en la BD
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Models):
-//   Definir la estructura del documento "evento" en MongoDB.
-//   Esta capa NO contiene lógica de negocio; solo reglas estructurales
-//   (tipo de dato, si es requerido, si tiene un valor por defecto, etc.).
+// Este archivo le dice a Mongoose cómo es la estructura de un "evento"
+// en la base de datos. Funciona igual que user.model.js pero para eventos.
 //
-// CONCEPTO — Referencia entre colecciones (populate):
-//   'type: mongoose.Schema.Types.ObjectId, ref: "User"' le dice a Mongoose
-//   que el campo 'organizer' es el _id de un documento de la colección User.
-//   Cuando más arriba (en el DAO) se llama a .populate("organizer"),
-//   Mongoose reemplaza ese ObjectId con el documento completo del usuario.
-//   Esto es equivalente a un JOIN en SQL.
+// ¿Qué es el campo "organizer"?
+//   En vez de guardar todos los datos del organizador dentro del evento,
+//   guardamos solo su ID (una referencia). Cuando necesitamos los datos
+//   completos del organizador, Mongoose puede buscarlos automáticamente.
+//   Esto se llama "populate" y es equivalente a un JOIN en bases de datos SQL.
+//   Es mejor guardar solo el ID porque evita duplicar datos.
 //
-// CONCEPTO — Índices:
-//   eventSchema.index({ status: 1 }) crea un índice ascendente en MongoDB
-//   sobre el campo 'status'. Esto acelera drásticamente las consultas que
-//   filtran por ese campo (ej: buscar todos los eventos "published").
+// ¿Qué son los índices?
+//   Un índice es como el índice de un libro: permite encontrar información
+//   mucho más rápido sin leer todo el documento.
+//   Creamos índices en los campos por los que más filtramos (status, date)
+//   para que las búsquedas sean más rápidas.
 // ============================================================
 
 import mongoose from "mongoose";
@@ -37,9 +36,9 @@ const eventSchema = new mongoose.Schema(
       default: "draft"
     },
 
-    // Referencia al usuario que creó el evento.
-    // No guardamos el documento completo, solo el _id (ObjectId).
-    // El documento User real vive en su propia colección.
+    // Guardamos solo el ID del organizador, no todos sus datos.
+    // Con ref: "User" le decimos a Mongoose que ese ID pertenece a la colección "users".
+    // Luego podemos usar .populate("organizer") para traer los datos completos.
     organizer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -49,7 +48,8 @@ const eventSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Índices para acelerar las búsquedas más frecuentes en la API
+// Creamos índices en los campos más consultados para que las búsquedas sean más rápidas.
+// "1" significa orden ascendente (de menor a mayor).
 eventSchema.index({ status: 1 });
 eventSchema.index({ date: 1 });
 

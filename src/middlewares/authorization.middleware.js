@@ -1,53 +1,52 @@
 // ============================================================
-// middlewares/authorization.middleware.js — Middleware de Autorización
+// middlewares/authorization.middleware.js — Verificar el rol del usuario
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Middlewares):
-//   Verificar que el usuario autenticado tiene el ROL necesario
-//   para acceder a una ruta. Se ejecuta DESPUÉS de authenticateJWT
-//   (que garantiza que req.user ya existe).
+// Este archivo exporta la función "authorize" que verifica si el usuario
+// tiene el rol necesario para acceder a una ruta.
 //
-// DIFERENCIA ENTRE AUTENTICACIÓN Y AUTORIZACIÓN:
-//   Autenticación → "¿quién sos?" → authenticateJWT verifica el JWT
+// ¿Cuál es la diferencia entre autenticación y autorización?
+//   Autenticación → "¿sos vos?" → authenticateJWT verifica el token
 //   Autorización  → "¿qué podés hacer?" → authorize verifica el rol
 //
-// CONCEPTO JS — Función que retorna una función (closure/factory):
-//   'authorize' es una función que recibe 'allowedRoles' (un array)
-//   y RETORNA una función (el middleware real).
-//   Esto permite parametrizar el middleware: authorize(["admin"])
-//   retorna un middleware que solo deja pasar a admins.
-//   authorize(["organizer", "admin"]) deja pasar a ambos.
-//   Se llama en la definición de rutas, no en tiempo de ejecución de la petición.
+//   Ejemplo de la vida real:
+//   Autenticación: mostrar tu documento de identidad en la entrada.
+//   Autorización: tener el nivel de acceso para entrar al área restringida.
 //
-// CONCEPTO JS — .includes():
-//   'allowedRoles.includes(req.user.role)' verifica si el rol del
-//   usuario está en el array de roles permitidos.
-//   Retorna true/false. Es el método más legible para esta verificación.
+// ¿Por qué authorize recibe un array y devuelve otra función?
+//   Necesitamos que el mismo middleware sea flexible:
+//     authorize(["admin"])              → solo admins
+//     authorize(["organizer", "admin"]) → organizadores y admins
+//   Para lograrlo, authorize NO es directamente el middleware.
+//   Es una función que CREA el middleware con los roles que le pasamos.
 //
-// CONCEPTO JS — Closures:
-//   La función interna '(req, res, next) => {...}' tiene acceso a
-//   'allowedRoles' del scope de 'authorize' aunque 'authorize' ya terminó.
-//   Esto es un closure: la función "cierra" sobre el ámbito exterior.
+//   Cuando escribimos authorize(["admin"]) en la ruta, eso se ejecuta
+//   en el momento de definir la ruta y devuelve una función middleware.
+//   Esa función middleware es la que Express va a ejecutar en cada pedido.
+//   La función interna "recuerda" los roles aunque authorize ya terminó.
+//   Eso se llama "closure" en JavaScript: una función que recuerda
+//   las variables del scope donde fue creada.
 // ============================================================
 
-// ENTRADA (de la ruta): allowedRoles — array de roles permitidos
-//   ej: authorize(["admin"]) o authorize(["organizer", "admin"])
-// RETORNA: una función middleware (req, res, next) específica para esos roles
+// allowedRoles es el array de roles permitidos que viene de la ruta.
+// Ejemplo: authorize(["organizer", "admin"]) → allowedRoles = ["organizer", "admin"]
 export const authorize = (allowedRoles) => {
-  // Esta función INTERNA es el middleware real que Express ejecuta en cada petición.
-  // 'allowedRoles' está disponible aquí gracias al closure.
+  // Esta función interna es el middleware real que Express ejecuta en cada pedido.
+  // "recuerda" allowedRoles gracias al closure.
   return (req, res, next) => {
-    // req.user fue puesto por authenticateJWT en el paso anterior
-    // Si no existe, es un error de configuración de rutas (falta authenticateJWT antes)
+    // req.user lo puso authenticateJWT en el paso anterior.
+    // Si no existe, significa que authorize se usó sin authenticateJWT antes, lo cual es un error.
     if (!req.user) {
       return res.status(401).json({ status: "error", message: "No autenticado" });
     }
 
-    // Verificar si el rol del usuario está en la lista de roles permitidos
+    // .includes() verifica si el rol del usuario está dentro del array de roles permitidos.
+    // Si NO está incluido, el usuario no tiene permiso y respondemos con 403.
+    // 403 significa "forbidden" (prohibido), a diferencia de 401 que es "no autenticado".
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ status: "error", message: "Sin permisos suficientes" });
     }
 
-    // Rol permitido → continuar al siguiente middleware o controller
+    // El rol es válido: le decimos a Express que siga al siguiente paso.
     next();
   };
 };

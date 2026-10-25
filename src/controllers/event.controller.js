@@ -1,63 +1,64 @@
 // ============================================================
-// controllers/event.controller.js — Controller de Eventos
+// controllers/event.controller.js — Controller de eventos
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Controllers):
-//   Recibir las peticiones HTTP del router, extraer los datos
-//   necesarios (params, body, user), llamar al service y responder.
-//   Es una capa delgada: no toma decisiones de negocio.
+// Este archivo maneja las respuestas HTTP para crear, leer y
+// modificar eventos. Es el "último paso" antes de responder al cliente.
 //
-// PATRÓN CONSISTENTE EN CADA HANDLER:
-//   async (req, res, next) => {
-//     try {
-//       const result = await service.metodo(datos de req);
-//       res.json({ status: "success", data: result });
-//     } catch (error) {
-//       next(error); // Pasa el error al errorHandler centralizado
-//     }
-//   }
+// ¿Qué hace un controller?
+//   1. Lee los datos que llegaron en el pedido (req.body, req.params, req.user)
+//   2. Se los pasa al "service" que hace el trabajo pesado
+//   3. Cuando el service termina, responde al cliente con el resultado
 //
-// CONCEPTO JS — req.params vs req.body vs req.query vs req.user:
-//   req.params → segmentos dinámicos de la URL: /events/:id → req.params.id
-//   req.body   → cuerpo del request (JSON) enviado por el cliente
-//   req.query  → query string: /events?page=2&limit=5 → req.query.page
-//   req.user   → payload del JWT puesto por authenticateJWT middleware
+//   El controller es una capa delgada. No tiene lógica de negocio.
+//   No accede directamente a la base de datos. Solo coordina.
+//
+// ¿Qué son req.body, req.params y req.user?
+//   req.body   → datos que el cliente envió en el cuerpo del pedido (ej: { title: "Mi evento" })
+//   req.params → partes variables de la URL (ej: /events/123 → req.params.id = "123")
+//   req.query  → filtros en la URL (ej: /events?page=2 → req.query.page = "2")
+//   req.user   → datos del usuario logueado (lo puso authenticateJWT)
+//
+// ¿Por qué cada función usa async/await y try/catch?
+//   Las operaciones de base de datos son "asíncronas": llevan tiempo.
+//   "async" y "await" nos permiten esperar el resultado sin bloquear el servidor.
+//   "try/catch" atrapa cualquier error que ocurra y lo manda al manejador de errores.
 // ============================================================
 
 import { EventService } from "../services/event.service.js";
 
+// Creamos una instancia del service para poder llamar a sus métodos.
+// Se hace afuera de las funciones para no crearlo de nuevo en cada pedido.
 const eventService = new EventService();
 
-// POST /api/events
-// ENTRADA: req.body — { title, description, category, date, location, capacity, price }
-//          req.user — organizador autenticado (del JWT)
-// RETORNA: EventDTO del evento creado, status 201
+// POST /api/events — Crear un nuevo evento
+// req.body tiene los datos del evento que mandó el organizador.
+// req.user tiene los datos del organizador logueado (para saber quién lo crea).
 export const createEvent = async (req, res, next) => {
   try {
-    // req.body contiene los datos del evento; req.user tiene el organizador
     const event = await eventService.createEvent(req.body, req.user);
     res.status(201).json({ status: "success", message: "Evento creado", data: event });
   } catch (error) {
+    // Si algo falló, next(error) le pasa el error al manejador central de errores.
     next(error);
   }
 };
 
-// GET /api/events?page=1&limit=10&status=published&category=música
-// ENTRADA: req.query — parámetros de filtrado y paginación (opcionales)
-// RETORNA: { data: EventDTO[], total, page, limit, totalPages }
+// GET /api/events — Obtener todos los eventos (con filtros opcionales)
+// Los filtros llegan como parámetros en la URL: /events?page=1&status=published
+// req.query tiene esos filtros como un objeto de texto: { page: "1", status: "published" }
 export const getEvents = async (req, res, next) => {
   try {
-    // req.query llega como un objeto de strings: { page: "2", limit: "5" }
-    // El service se encarga de convertir a números y aplicar los filtros
     const result = await eventService.getEvents(req.query);
+    // "...result" despliega todas las propiedades del resultado en la respuesta.
+    // result puede incluir: { data, total, page, limit, totalPages }
     res.status(200).json({ status: "success", ...result });
   } catch (error) {
     next(error);
   }
 };
 
-// GET /api/events/:id
-// ENTRADA: req.params.id — ObjectId del evento en la URL
-// RETORNA: EventDTO del evento, o 404 si no existe
+// GET /api/events/:id — Obtener un evento por su ID
+// El ID del evento viene en la URL: /api/events/abc123 → req.params.id = "abc123"
 export const getEventById = async (req, res, next) => {
   try {
     const event = await eventService.getEventById(req.params.id);
@@ -67,11 +68,10 @@ export const getEventById = async (req, res, next) => {
   }
 };
 
-// PUT /api/events/:id
-// ENTRADA: req.params.id — ObjectId del evento
-//          req.body — campos a actualizar
-//          req.user — usuario autenticado (para verificar propiedad en el service)
-// RETORNA: EventDTO actualizado
+// PUT /api/events/:id — Actualizar un evento
+// req.params.id tiene el ID del evento a actualizar.
+// req.body tiene los campos nuevos.
+// req.user se pasa para que el service verifique que el usuario es el dueño del evento.
 export const updateEvent = async (req, res, next) => {
   try {
     const event = await eventService.updateEvent(req.params.id, req.body, req.user);
@@ -81,11 +81,9 @@ export const updateEvent = async (req, res, next) => {
   }
 };
 
-// PATCH /api/events/:id/status
-// ENTRADA: req.params.id — ObjectId del evento
-//          req.body.status — nuevo estado ("draft"|"published"|"cancelled"|"finished")
-//          req.user — para verificar propiedad en el service
-// RETORNA: EventDTO con el nuevo status
+// PATCH /api/events/:id/status — Cambiar el estado de un evento
+// PATCH se usa cuando modificamos solo una parte del recurso (no todo).
+// req.body.status tiene el nuevo estado: "draft", "published", "cancelled" o "finished".
 export const changeEventStatus = async (req, res, next) => {
   try {
     const event = await eventService.changeStatus(req.params.id, req.body.status, req.user);

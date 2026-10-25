@@ -1,67 +1,57 @@
 // ============================================================
-// dao/event.dao.js — Data Access Object de Evento
+// dao/event.dao.js — Operaciones de eventos en la base de datos
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (DAOs):
-//   Encapsular todas las operaciones de acceso a la BD para eventos.
-//   El DAO conoce Mongoose pero NO conoce lógica de negocio (eso es
-//   trabajo del Service). Su única responsabilidad: hablar con la BD.
+// DAO significa "Data Access Object" (objeto para acceder a datos).
+// Este archivo es el único que habla directamente con MongoDB para
+// todo lo relacionado con eventos (guardar un evento, buscarlo,
+// cambiarle datos o contarlos).
 //
-// CONCEPTO — populate:
-//   .populate(config) reemplaza un ObjectId por el documento relacionado.
-//   Ejemplo: event.organizer (que es "507f1f77...") se convierte en
-//   { _id: "507f1f77...", first_name: "Ana", email: "ana@..." }
-//   Esto ocurre con una segunda consulta a la BD internamente.
-//
-// CONCEPTO JS — Parámetros con valores por defecto:
-//   'async find(filter = {}, options = {})' → si no se pasan esos argumentos,
-//   filter vale {} y options vale {}.
-//   Dentro de options: '{ skip = 0, limit = 10, sort = { date: 1 }, populate = null } = {}'
-//   usa desestructuración con defaults anidados.
-//
-// CONCEPTO JS — Desestructuración de objetos:
-//   '{ skip = 0, limit = 10 } = options' extrae las propiedades 'skip' y
-//   'limit' del objeto options, con valores por defecto si no existen.
-//   Equivale a: const skip = options.skip ?? 0; const limit = options.limit ?? 10;
+// ¿Qué es "populate"?
+// En la base de datos, cada evento solo guarda el número de ID de su organizador.
+// Con "populate", le decimos a MongoDB: "buscá al usuario que tiene ese ID
+// y traeme sus datos (como nombre y email) para mostrarlos juntos".
 // ============================================================
 
 import Event from "../models/event.model.js";
 
 export class EventDAO {
-  // ENTRADA: id — ObjectId del evento
-  // RETORNA: documento Mongoose del evento, o null
+  // Busca un solo evento usando su identificador único (_id de MongoDB)
   async findById(id) {
     return Event.findById(id);
   }
 
-  // ENTRADA: filter — criterios de búsqueda
-  //          options — { skip, limit, sort, populate }
-  // RETORNA: array de documentos (puede estar vacío)
+  // Busca una lista de eventos con filtros y paginación.
+  // - filter: qué eventos queremos (por ejemplo: { category: "tecnologia" })
+  // - skip: cuántos eventos saltear (sirve para pasar de página)
+  // - limit: cuántos eventos traer como máximo por página
+  // - sort: cómo ordenarlos (por defecto por fecha, del más cercano al más lejano)
+  // - populate: si queremos que traiga los datos del organizador incluidos
   async find(filter = {}, { skip = 0, limit = 10, sort = { date: 1 }, populate = null } = {}) {
-    // Encadenamiento de métodos: cada método retorna el mismo query object
+    // Armamos la consulta paso a paso
     const query = Event.find(filter).sort(sort).skip(skip).limit(limit);
 
-    // Si se pide populate, lo agregamos al query antes de ejecutarlo
+    // Si nos pidieron completar los datos del organizador, se lo agregamos a la consulta
     if (populate) query.populate(populate);
 
-    // Al hacer 'return query', Mongoose ejecuta la consulta y retorna la Promesa
+    // Ejecutamos la consulta y devolvemos los resultados
     return query;
   }
 
-  // ENTRADA: data — objeto con los campos del evento a crear
-  // RETORNA: documento Mongoose creado; luego se hace populate del organizer
+  // Guarda un nuevo evento en la base de datos con los datos recibidos
   async create(data) {
     return Event.create(data);
   }
 
-  // ENTRADA: id — ObjectId; data — campos a modificar
-  // RETORNA: documento actualizado (new: true), o null si no existe
+  // Modifica los datos de un evento existente por su ID.
+  // - new: true le dice a Mongoose que nos devuelva el evento YA actualizado.
+  // - runValidators: true asegura que se sigan respetando las reglas del modelo.
   async update(id, data) {
     return Event.findByIdAndUpdate(id, data, { new: true, runValidators: true });
   }
 
-  // ENTRADA: filter — objeto de filtro
-  // RETORNA: número entero con la cantidad de documentos que coinciden
+  // Cuenta cuántos eventos coinciden con un filtro (sirve para saber cuántos hay en total)
   async countDocuments(filter = {}) {
     return Event.countDocuments(filter);
   }
 }
+

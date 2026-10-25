@@ -1,28 +1,14 @@
 // ============================================================
-// services/user.service.js — Service de Usuario
+// services/user.service.js — Servicio de Usuarios
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Services):
-//   Contener la lógica de negocio relacionada con usuarios.
-//   El Service orquesta: obtiene datos del Repository, aplica
-//   reglas de negocio, y transforma la salida con DTOs.
-//   No sabe de HTTP (req/res); eso lo maneja el Controller.
+// ¿Qué es un "Service" (Servicio)?
+// El Service es el cerebro de la aplicación: acá vive la lógica del negocio.
 //
-// RESPONSABILIDAD DE ESTA CAPA vs otras:
-//   ┌─────────────────┬──────────────────────────────────────┐
-//   │ Capa            │ Responsabilidad                      │
-//   ├─────────────────┼──────────────────────────────────────┤
-//   │ Controller      │ Leer req, llamar service, enviar res │
-//   │ Service (aquí)  │ Lógica de negocio, orquestación      │
-//   │ Repository      │ Traducir negocio a consultas de BD   │
-//   │ DAO             │ Ejecutar consultas en Mongoose        │
-//   │ DTO             │ Filtrar datos para la respuesta HTTP  │
-//   └─────────────────┴──────────────────────────────────────┘
-//
-// CONCEPTO JS — 'this' en métodos de clase:
-//   Dentro de 'async getAllUsers()', 'this.userRepository' refiere
-//   al objeto UserRepository que fue asignado en el constructor.
-//   'this' cambia según el CONTEXTO de invocación; en una clase,
-//   se refiere a la instancia (el objeto creado con 'new UserService()').
+// ¿Cómo se divide el trabajo en el backend?
+// 1. Controller: atiende el pedido HTTP de internet (req) y envía la respuesta (res).
+// 2. Service (este archivo): decide QUÉ hacer y aplica las reglas del sistema.
+// 3. Repository / DAO: busca o guarda la información en la base de datos.
+// 4. DTO: limpia los datos (por ejemplo, quita las contraseñas) antes de enviarlos.
 // ============================================================
 
 import { UserRepository } from "../repositories/user.repository.js";
@@ -30,23 +16,17 @@ import { UserDTO }        from "../dto/user.dto.js";
 
 export class UserService {
   constructor() {
-    // Crea e inyecta el repository.
-    // El service es dueño de su repository; lo instancia internamente.
+    // El servicio necesita al repositorio para pedirle usuarios a la base de datos
     this.userRepository = new UserRepository();
   }
 
-  // ENTRADA: (ninguna — obtiene todos los usuarios)
-  // PROCESO:
-  //   1. Pide todos los usuarios al repository (que llama al DAO → MongoDB)
-  //   2. Convierte el array de documentos Mongoose en array de UserDTOs
-  // RETORNA: array de UserDTO (sin passwords, listo para el Controller)
-  // DELEGACIÓN: Controller llama → Service → Repository → DAO → Mongoose
+  // Trae todos los usuarios registrados en el sistema.
+  // 1. Le pide la lista completa al repositorio.
+  // 2. Transforma cada usuario usando UserDTO para eliminar contraseñas y datos sensibles.
+  // 3. Devuelve la lista segura para que el controlador pueda responderle al cliente.
   async getAllUsers() {
-    // 'await' espera a que findAll() resuelva la Promesa con el array de usuarios
     const users = await this.userRepository.findAll();
-
-    // UserDTO.fromMany() aplica UserDTO a cada usuario (filter de datos sensibles)
-    // RETORNA al Controller un array limpio para enviarlo en la respuesta HTTP
     return UserDTO.fromMany(users);
   }
 }
+

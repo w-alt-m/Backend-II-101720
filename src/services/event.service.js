@@ -1,28 +1,11 @@
 // ============================================================
-// services/event.service.js — Service de Eventos
+// services/event.service.js — Servicio de Eventos
 // ============================================================
-// PROPÓSITO DE ESTA CAPA (Services):
-//   Contener toda la lógica de negocio relacionada con eventos.
-//   Coordina el Repository (acceso a datos), aplica reglas del
-//   dominio (¿quién puede editar? ¿se puede cancelar?) y retorna
-//   DTOs limpios al Controller.
-//
-// CONCEPTO JS — Coalescencia nula (??):
-//   'status = "draft"' en la desestructuración es un default.
-//   '??' es el operador de coalescencia nula: retorna el lado
-//   derecho SOLO si el lado izquierdo es null o undefined.
-//   Diferente a '||': '|| ' también evalúa false, 0, "".
-//   Ejemplo: page ?? 1 → si page es undefined → 1; si page es 0 → 0
-//
-// CONCEPTO JS — Promise.all():
-//   'await Promise.all([promesa1, promesa2])' ejecuta AMBAS promesas
-//   en PARALELO y espera a que las dos terminen antes de continuar.
-//   Es más eficiente que hacer dos 'await' separados (que serían secuenciales).
-//
-// CONCEPTO — Responsabilidad del Service en autorización:
-//   Algunos controles de autorización finos (¿es el dueño del evento?)
-//   viven aquí y no en el middleware, porque requieren consultar la BD
-//   para obtener el documento y verificar el campo 'organizer'.
+// Este archivo contiene todas las reglas de negocio de los eventos:
+// - Validar que no falten datos al crear un evento.
+// - Asignar automáticamente como organizador al usuario que lo creó.
+// - Comprobar que solo el dueño del evento o un administrador puedan modificarlo.
+// - Calcular la paginación (para ver los eventos de 10 en 10, por ejemplo).
 // ============================================================
 
 import { EventRepository } from "../repositories/event.repository.js";
@@ -34,64 +17,58 @@ export class EventService {
     this.eventRepository = new EventRepository();
   }
 
-  // ── CREAR EVENTO ─────────────────────────────────────────────
-  // ENTRADA: data — body del request (title, description, etc.)
-  //          user — payload del JWT ({ id, role, email }) puesto por el middleware
-  // PROCESO: valida campos mínimos → crea el evento con el user.id como organizer
-  // RETORNA: EventDTO del evento creado (con organizer populado)
+  // ── Crear un nuevo evento ───────────────────────────────────
+  // Recibe los datos del evento y la información del usuario autenticado
   async createEvent(data, user) {
-    // Desestructuración con default: si 'status' no viene en el body, usa "draft"
     const { title, description, category, date, location, capacity, price, status = "draft" } = data;
 
-    // Validación de campos obligatorios (regla de negocio mínima)
+    // Verificamos que no falte ningún dato obligatorio
     if (!title || !description || !category || !date || !location || capacity === undefined || price === undefined) {
       throw badRequest("Faltan campos obligatorios");
     }
 
+    // Creamos el evento asignando al usuario autenticado como organizador
     const event = await this.eventRepository.create({
       title, description, category,
-      date: new Date(date), // Convertir el string ISO a objeto Date de JS
+      date: new Date(date), // Convertimos la fecha recibida a formato Date de JavaScript
       location, capacity, price, status,
-      organizer: user.id // El organizador es el usuario autenticado
+      organizer: user.id
     });
 
+    // Devolvemos el evento formateado mediante el DTO
     return EventDTO.from(event);
   }
 
-  // ── OBTENER EVENTO POR ID ────────────────────────────────────
-  // ENTRADA: id — string con el ObjectId del evento (de req.params.id)
-  // PROCESO: busca en el repository; lanza notFound si no existe
-  // RETORNA: EventDTO del evento encontrado
+  // ── Obtener un evento por su ID ─────────────────────────────
   async getEventById(id) {
     const event = await this.eventRepository.findById(id);
     if (!event) throw notFound("Evento no encontrado");
     return EventDTO.from(event);
   }
 
-  // ── LISTAR EVENTOS ───────────────────────────────────────────
-  // ENTRADA: query — parámetros de req.query (page, limit, status, etc.)
-  // PROCESO: construye filtros, pagina resultados, retorna con metadatos
-  // RETORNA: { data: EventDTO[], total, page, limit, totalPages }
+  // ── Listar eventos con filtros y paginación ─────────────────
+  // Permite filtrar por estado (status), categoría y navegar por páginas (page, limit)
   async getEvents(query) {
-    // Desestructuración del objeto query con valores por defecto
     const { status, category, page = 1, limit = 10 } = query;
 
-    // Construir el objeto de filtros de forma dinámica
+    // Construimos los filtros según lo que haya pedido el usuario
     const filter = {};
-    if (status)   filter.status   = status;    // Filtrar por estado
-    if (category) filter.category = category;  // Filtrar por categoría (exacto)
+    if (status)   filter.status   = status;
+    if (category) filter.category = category;
 
+    // Convertimos página y límite a números
     const currentPage  = Number(page);
     const currentLimit = Number(limit);
-    const skip         = (currentPage - 1) * currentLimit; // Cuántos saltar para paginar
+    // Calculamos cuántos elementos saltear para llegar a la página deseada
+    const skip         = (currentPage - 1) * currentLimit;
 
-    // Promise.all() ejecuta AMBAS consultas en paralelo (más eficiente que secuencial)
-    // [0] = array de eventos de la página actual; [1] = total de documentos
+    // Ejecutamos al mismo tiempo la búsqueda de eventos y el conteo total
     const [events, total] = await Promise.all([
       this.eventRepository.findAll(filter, { skip, limit: currentLimit }),
       this.eventRepository.count(filter)
     ]);
 
+    // Devolvemos los datos junto con la información de la página actual
     return {
       data:       EventDTO.fromMany(events),
       total,
@@ -101,25 +78,19 @@ export class EventService {
     };
   }
 
-  // ── ACTUALIZAR EVENTO ────────────────────────────────────────
-  // ENTRADA: id — ObjectId del evento; data — campos a actualizar; user — del JWT
-  // PROCESO: verifica existencia → verifica propiedad → actualiza
-  // RETORNA: EventDTO del evento actualizado
+  // ── Modificar los datos de un evento ────────────────────────
   async updateEvent(id, data, user) {
     const event = await this.eventRepository.findById(id);
     if (!event) throw notFound("Evento no encontrado");
 
-    // Solo el organizador dueño o un admin puede modificar el evento
+    // Revisamos que quien intenta modificar sea el organizador o un admin
     this._assertCanManage(event, user);
 
     const updated = await this.eventRepository.updateById(id, data);
     return EventDTO.from(updated);
   }
 
-  // ── CAMBIAR ESTADO ───────────────────────────────────────────
-  // ENTRADA: id — ObjectId; status — nuevo estado; user — del JWT
-  // PROCESO: verifica existencia → verifica propiedad → actualiza el estado
-  // RETORNA: EventDTO con el nuevo status
+  // ── Cambiar el estado de un evento (draft, published, etc.) ─
   async changeStatus(id, status, user) {
     if (!status) throw badRequest("El campo status es obligatorio");
 
@@ -132,19 +103,13 @@ export class EventService {
     return EventDTO.from(updated);
   }
 
-  // ── MÉTODO PRIVADO (convención con _) ───────────────────────
-  // CONVENCIÓN: el prefijo '_' indica que es de uso interno de la clase.
-  //             JS no impone privacidad real aquí (para eso existe '#'),
-  //             pero '_' es la convención ampliamente usada.
-  // ENTRADA: event — documento Mongoose del evento
-  //          user  — payload del JWT ({ id, role })
-  // PROCESO: si es admin → pasa; si es el organizer dueño → pasa; si no → lanza forbidden
+  // ── Función interna para chequear permisos ─────────────────
+  // Si el usuario es administrador o es el organizador original del evento,
+  // puede continuar. Si no, lanzamos un error de acceso prohibido (403).
   _assertCanManage(event, user) {
-    if (user.role === "admin") return; // Los admins pueden todo
+    if (user.role === "admin") return; // Los administradores tienen permiso para todo
 
-    // El campo organizer puede ser un ObjectId o un objeto populado.
-    // Encadenamiento opcional '?._id' → si está populado, usa su _id;
-    // si no, usa el valor directo (que ya es el ObjectId).
+    // Obtenemos el ID del organizador (por si está completo como objeto o solo es un ID)
     const organizerId = (event.organizer?._id ?? event.organizer).toString();
 
     if (organizerId !== user.id) {
@@ -152,3 +117,4 @@ export class EventService {
     }
   }
 }
+
